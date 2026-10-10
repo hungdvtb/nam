@@ -6242,3 +6242,185 @@ body[data-active-tab="pa-training"] .floating-style-toolbar #drawingJumpM15Btn:h
         flex-wrap: nowrap;
     }
 }
+
+/* Compact single-line PA chart toolbar */
+.market-chart-panel.is-pa-embedded .chart-topbar {
+    min-height: 50px;
+    padding: 6px 10px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: visible;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls > *,
+.market-chart-panel.is-pa-embedded .chart-symbol-group,
+.market-chart-panel.is-pa-embedded .chart-timeframe-controls,
+.market-chart-panel.is-pa-embedded .chart-view-controls,
+.market-chart-panel.is-pa-embedded .chart-replay-buttons,
+.market-chart-panel.is-pa-embedded .chart-replay-speed {
+    flex: 0 0 auto;
+}
+
+.market-chart-panel.is-pa-embedded .chart-control,
+.market-chart-panel.is-pa-embedded .chart-controls select,
+.market-chart-panel.is-pa-embedded .chart-controls input {
+    min-height: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-control {
+    min-width: 34px;
+    padding: 6px 10px;
+}
+
+.market-chart-panel.is-pa-embedded #chartSymbolSelect {
+    width: 108px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-timeframe-more > summary {
+    display: inline-flex;
+}
+
+.market-chart-panel.is-pa-embedded .chart-timeframe-menu {
+    top: calc(100% + 6px);
+}
+
+.market-chart-panel.is-pa-embedded .chart-view-controls {
+    margin-left: 2px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline {
+    flex: 0 0 auto;
+    max-width: none;
+    min-height: 34px;
+    margin-left: 6px;
+    padding: 0 0 0 8px;
+    border: 0;
+    border-left: 1px solid #d7e1ee;
+    border-radius: 0;
+    background: transparent;
+    gap: 6px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline strong {
+    min-width: 34px;
+    color: #475569;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline .chart-control {
+    min-width: 32px;
+    min-height: 32px;
+    height: 32px;
+    padding: 5px 8px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplayPlayBtn {
+    min-width: 38px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplaySpeed {
+    width: 66px;
+    min-width: 66px;
+    height: 32px;
+    padding: 5px 22px 5px 8px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline input[type="range"] {
+    width: 92px;
+    min-width: 92px;
+    max-width: 92px;
+    height: 24px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplayLabel {
+    flex: 0 0 auto;
+    min-width: 132px;
+    color: #475569;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.market-chart-panel.is-pa-embedded .drawing-toolbar {
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+/* Tighter PA toolbar fit */
+.market-chart-panel.is-pa-embedded .chart-controls {
+    gap: 5px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-symbol-group,
+.market-chart-panel.is-pa-embedded .chart-timeframe-controls,
+.market-chart-panel.is-pa-embedded .chart-view-controls,
+.market-chart-panel.is-pa-embedded .chart-replay-buttons,
+.market-chart-panel.is-pa-embedded .chart-replay-speed {
+    gap: 4px;
+}
+
+.market-chart-panel.is-pa-embedded #chartSymbolSelect {
+    width: 96px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-control {
+    min-width: 30px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-timeframe-more > summary {
+    min-width: 58px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline {
+    margin-left: 2px;
+    padding-left: 6px;
+    gap: 4px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline strong {
+    min-width: 24px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline .chart-control {
+    min-width: 28px;
+    width: auto;
+    padding-left: 7px;
+    padding-right: 7px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplayPlayBtn {
+    min-width: 34px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplaySpeed {
+    width: 58px;
+    min-width: 58px;
+    padding-right: 20px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline input[type="range"] {
+    width: 62px;
+    min-width: 62px;
+    max-width: 62px;
+}
+
+.market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplayLabel {
+    min-width: 74px;
+    max-width: 74px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+

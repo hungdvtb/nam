@@ -9162,6 +9162,32 @@
         state.chartView.priceScale = clamp(Number(state.chartView.priceScale || 1), 0.2, 20);
         state.chartView.priceOffset = Number(state.chartView.priceOffset || 0);
 
+        if (state.chartView.replay.enabled) {
+            const replayLastIndex = Math.max(0, allBars.length - 1);
+            const replayIndex = clamp(Math.round(state.chartView.replay.index || 0), 0, replayLastIndex);
+            state.chartView.replay.index = replayIndex;
+            const replayVisibleCount = Math.min(state.chartView.barsOnScreen, allBars.length);
+            const currentLastExclusive = clamp(
+                allBars.length - state.chartView.rightOffset,
+                replayVisibleCount,
+                allBars.length + Math.max(0, replayVisibleCount - minBars)
+            );
+            const currentFirst = clamp(
+                Math.round(currentLastExclusive - replayVisibleCount),
+                0,
+                Math.max(0, allBars.length - minBars)
+            );
+            const currentLast = Math.min(allBars.length, Math.max(currentFirst + minBars, Math.round(currentLastExclusive)));
+            if (replayIndex < currentFirst || replayIndex >= currentLast) {
+                const replayFirst = clamp(
+                    Math.round(replayIndex - replayVisibleCount * 0.65),
+                    0,
+                    Math.max(0, allBars.length - replayVisibleCount)
+                );
+                state.chartView.rightOffset = clamp(allBars.length - replayFirst - replayVisibleCount, offsetLimits.min, offsetLimits.max);
+            }
+        }
+
         const visibleCount = Math.min(state.chartView.barsOnScreen, allBars.length);
         const virtualLastExclusive = clamp(
             allBars.length - state.chartView.rightOffset,
@@ -14432,7 +14458,7 @@
         if (speed) speed.value = String(state.chartView.replay.speed || 1);
         if (label) {
             const bar = bars[index] || bars[bars.length - 1];
-            label.textContent = bars.length ? `Nến #${number(index + 1)}/${number(bars.length)} | ${formatChartTime(bar?.time_iso || bar?.time)} | ${state.chartView.replay.speed || 1}x` : 'Chưa có dữ liệu';
+            label.textContent = bars.length ? `#${number(index + 1)}/${number(bars.length)} · ${formatChartTime(bar?.time_iso || bar?.time)} · ${state.chartView.replay.speed || 1}x` : 'Chưa có dữ liệu';
         }
         if (play) play.textContent = state.chartView.replay.playing ? '⏸' : '▶';
     }

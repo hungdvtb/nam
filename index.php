@@ -1372,7 +1372,7 @@
                                 <button class="chart-control chart-timeframe-main is-active" data-chart-timeframe="H4" type="button">H4</button>
                                 <button class="chart-control chart-timeframe-main" data-chart-timeframe="M15" type="button">M15</button>
                                 <details class="chart-timeframe-more" id="chartTimeframeMore">
-                                    <summary class="chart-control" id="chartTimeframeMoreToggle">Khung khác <span aria-hidden="true">⌄</span></summary>
+                                    <summary class="chart-control" id="chartTimeframeMoreToggle" title="Mở các khung thời gian khác">Khác <span aria-hidden="true">⌄</span></summary>
                                     <div class="chart-timeframe-menu" aria-label="Khung thời gian khác">
                                         <button class="chart-control" data-chart-timeframe="M1" type="button">M1</button>
                                         <button class="chart-control" data-chart-timeframe="M5" type="button">M5</button>
@@ -1384,12 +1384,12 @@
                             </div>
                             <div class="chart-view-controls" aria-label="Điều khiển biểu đồ">
                                 <button class="chart-control" id="chartResetBtn" type="button">Đặt lại</button>
-                                <button class="chart-control" id="chartFitBtn" type="button">Vừa khung</button>
+                                <button class="chart-control" id="chartFitBtn" type="button" title="Vừa khung">Vừa</button>
                                 <button class="chart-control chart-jump-control" id="chartJumpStartBtn" type="button" title="Về cây nến đầu tiên">|&lt;</button>
                                 <button class="chart-control chart-jump-control" id="chartJumpEndBtn" type="button" title="Về cây nến mới nhất">&gt;|</button>
                                 <button class="chart-control" id="chartScreenshotBtn" type="button">Chụp ảnh</button>
-                                <button class="chart-control" id="chartThemeBtn" type="button">Nền tối</button>
-                                <button class="chart-control" id="chartFullscreenBtn" type="button">Phóng to</button>
+                                <button class="chart-control" id="chartThemeBtn" type="button" title="Bật/tắt nền tối">Tối</button>
+                                <button class="chart-control" id="chartFullscreenBtn" type="button" title="Phóng to biểu đồ">Full</button>
                             </div>
                         </div>
                     </div>
@@ -1457,7 +1457,7 @@
                             <button class="chart-control" id="chartNextTradeBtn" type="button">Lệnh sau</button>
                         </div>
                         <div class="chart-feature-group replay-group">
-                            <strong>Chạy nến</strong>
+                            <strong title="Chạy nến để backtest thủ công">Nến</strong>
                             <div class="chart-replay-buttons" aria-label="Điều khiển chạy nến">
                                 <button class="chart-control" id="chartReplayStartBtn" type="button" title="Về nến đầu để bắt đầu backtest">|&lt;</button>
                                 <button class="chart-control" id="chartReplayBackBtn" type="button" title="Lùi một nến">‹</button>
