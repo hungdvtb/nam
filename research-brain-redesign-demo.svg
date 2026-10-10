@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <style>
+      .bg { fill: #eef2f6; }
+      .sidebar { fill: #14202c; }
+      .panel { fill: #ffffff; stroke: #d4dde8; stroke-width: 1; }
+      .panel-soft { fill: #f8fafc; stroke: #d4dde8; stroke-width: 1; }
+      .active { fill: #eaf3ff; stroke: #2368e8; stroke-width: 1.4; }
+      .blue { fill: #2368e8; }
+      .green { fill: #11845b; }
+      .amber { fill: #b7791f; }
+      .red { fill: #c83b3b; }
+      .muted { fill: #5d6b7c; }
+      .ink { fill: #0e1726; }
+      .white { fill: #ffffff; }
+      .sideText { fill: #d8e3ee; }
+      .sideMuted { fill: #8fa2b7; }
+      .line { stroke: #d4dde8; stroke-width: 1; }
+      .dash { stroke: #b9c5d3; stroke-width: 1; stroke-dasharray: 4 5; }
+      .font { font-family: "Segoe UI", Arial, sans-serif; }
+      .h1 { font-size: 28px; font-weight: 800; }
+      .h2 { font-size: 18px; font-weight: 800; }
+      .h3 { font-size: 15px; font-weight: 800; }
+      .body { font-size: 13px; }
+      .small { font-size: 12px; }
+      .tiny { font-size: 11px; }
+      .metric { font-size: 24px; font-weight: 800; }
+      .badge { font-size: 12px; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1000"/>
+  <rect class="sidebar" x="0" y="0" width="230" height="1000"/>
+
+  <rect x="24" y="28" width="38" height="38" rx="8" fill="#dce8f6"/>
+  <text class="font h3 sideText" x="76" y="42">Huấn luyện giao dịch</text>
+  <text class="font h3 sideText" x="76" y="61">AI</text>
+  <text class="font tiny sideMuted" x="76" y="79">Forex H4 / M15</text>
+
+  <rect x="14" y="112" width="202" height="34" rx="8" fill="#1d2b3a" stroke="#33475d"/>
+  <text class="font badge sideText" x="28" y="134">1. MỤC TIÊU</text>
+  <text class="font body sideText" x="24" y="179">Tổng quan</text>
+  <text class="font body sideText" x="24" y="219">Cấu hình KPI</text>
+  <rect x="14" y="258" width="202" height="34" rx="8" fill="#1d2b3a" stroke="#33475d"/>
+  <text class="font badge sideText" x="28" y="280">2. DỮ LIỆU</text>
+  <text class="font body sideText" x="24" y="325">Dữ liệu &amp; MT5</text>
+  <rect x="14" y="364" width="202" height="34" rx="8" fill="#1d2b3a" stroke="#33475d"/>
+  <text class="font badge sideText" x="28" y="386">3. CHIẾN LƯỢC</text>
+  <rect x="14" y="412" width="202" height="36" rx="8" fill="#27384b"/>
+  <text class="font body sideText" x="24" y="435">Luật chiến lược</text>
+  <rect x="14" y="486" width="202" height="34" rx="8" fill="#1d2b3a" stroke="#33475d"/>
+  <text class="font badge sideText" x="28" y="508">4. BACKTEST</text>
+  <text class="font body sideText" x="24" y="553">Chạy backtest</text>
+  <text class="font body sideText" x="24" y="593">Kết quả &amp; KPI</text>
+  <rect x="14" y="632" width="202" height="34" rx="8" fill="#1d2b3a" stroke="#33475d"/>
+  <text class="font badge sideText" x="28" y="654">5. TỐI ƯU</text>
+  <text class="font body sideText" x="24" y="699">Kết nối OpenAI</text>
+  <text class="font body sideText" x="24" y="739">TradeBrain nâng cấp</text>
+
+  <text class="font h1 ink" x="260" y="52">AI Research</text>
+  <text class="font body muted" x="260" y="78">Tìm chiến lược theo phương pháp mẹ, backtest, tự tối ưu và giải thích lộ trình.</text>
+  <rect class="panel" x="1375" y="26" width="88" height="40" rx="8"/>
+  <text class="font body ink" x="1400" y="51">Tải lại</text>
+  <rect class="blue" x="1475" y="26" width="96" height="40" rx="8"/>
+  <text class="font body white" x="1495" y="51">Bắt đầu</text>
+
+  <rect class="panel" x="260" y="104" width="1310" height="68" rx="8"/>
+  <circle cx="300" cy="138" r="16" class="blue"/>
+  <text class="font badge white" x="293" y="143">1</text>
+  <text class="font h3 ink" x="326" y="132">Phương pháp</text>
+  <text class="font tiny muted" x="326" y="151">PA + Supply Demand</text>
+  <line class="dash" x1="460" y1="138" x2="595" y2="138"/>
+  <circle cx="625" cy="138" r="16" fill="#dbe7f5"/>
+  <text class="font badge ink" x="618" y="143">2</text>
+  <text class="font h3 ink" x="651" y="132">Dữ liệu &amp; KPI</text>
+  <text class="font tiny muted" x="651" y="151">GBPUSD H4/M15</text>
+  <line class="dash" x1="790" y1="138" x2="925" y2="138"/>
+  <circle cx="955" cy="138" r="16" fill="#dbe7f5"/>
+  <text class="font badge ink" x="948" y="143">3</text>
+  <text class="font h3 ink" x="981" y="132">Research</text>
+  <text class="font tiny muted" x="981" y="151">Chạy từng vòng</text>
+  <line class="dash" x1="1110" y1="138" x2="1245" y2="138"/>
+  <circle cx="1275" cy="138" r="16" fill="#dbe7f5"/>
+  <text class="font badge ink" x="1268" y="143">4</text>
+  <text class="font h3 ink" x="1301" y="132">Research Brain</text>
+  <text class="font tiny muted" x="1301" y="151">Hiểu nó đang học gì</text>
+
+  <rect class="panel" x="260" y="190" width="420" height="210" rx="8"/>
+  <text class="font h2 ink" x="284" y="224">1. Phương pháp mẹ</text>
+  <rect class="active" x="284" y="242" width="372" height="52" rx="8"/>
+  <text class="font h3 ink" x="302" y="264">Price Action + Supply Demand H4/M15</text>
+  <text class="font small muted" x="302" y="283">H4 tìm vùng, M15 xác nhận phản ứng.</text>
+  <text class="font small ink" x="284" y="324">Luật đo được</text>
+  <text class="font small muted" x="284" y="347">BOS / CHoCH • số lần chạm vùng • strength</text>
+  <text class="font small muted" x="284" y="370">Entry biên vùng hoặc 50% • RR / SL / TP / BE</text>
+
+  <rect class="panel" x="700" y="190" width="420" height="210" rx="8"/>
+  <text class="font h2 ink" x="724" y="224">2. Dữ liệu &amp; KPI</text>
+  <rect class="panel-soft" x="724" y="244" width="174" height="54" rx="8"/>
+  <text class="font tiny muted" x="742" y="265">Cặp tiền</text>
+  <text class="font h3 ink" x="742" y="284">GBPUSD</text>
+  <rect class="panel-soft" x="914" y="244" width="174" height="54" rx="8"/>
+  <text class="font tiny muted" x="932" y="265">Khung</text>
+  <text class="font h3 ink" x="932" y="284">H4 / M15</text>
+  <rect class="panel-soft" x="724" y="314" width="174" height="54" rx="8"/>
+  <text class="font tiny muted" x="742" y="335">KPI chính</text>
+  <text class="font h3 ink" x="742" y="354">WR 50% • RR 2</text>
+  <rect class="panel-soft" x="914" y="314" width="174" height="54" rx="8"/>
+  <text class="font tiny muted" x="932" y="335">Số lệnh tối thiểu</text>
+  <text class="font h3 ink" x="932" y="354">100 lệnh</text>
+
+  <rect class="panel" x="1140" y="190" width="430" height="210" rx="8"/>
+  <text class="font h2 ink" x="1164" y="224">3. Cách chạy</text>
+  <rect class="panel-soft" x="1164" y="244" width="178" height="54" rx="8"/>
+  <text class="font tiny muted" x="1182" y="265">Số vòng</text>
+  <text class="font h3 ink" x="1182" y="284">10 vòng thử nhanh</text>
+  <rect class="panel-soft" x="1358" y="244" width="178" height="54" rx="8"/>
+  <text class="font tiny muted" x="1376" y="265">Giới hạn</text>
+  <text class="font h3 ink" x="1376" y="284">300 giây / cặp</text>
+  <rect x="1164" y="318" width="372" height="48" rx="8" fill="#eef6ff" stroke="#b7d4ff"/>
+  <text class="font small ink" x="1182" y="339">Luồng tối ưu: lấy mẫu → siết chất lượng → cải thiện RR</text>
+  <text class="font small muted" x="1182" y="358">Không đặt lệnh MT5, chỉ lưu bản nghiên cứu.</text>
+
+  <rect class="panel" x="260" y="430" width="1310" height="520" rx="8"/>
+  <text class="font h2 ink" x="284" y="464">Research Brain</text>
+  <text class="font body muted" x="420" y="464">GBPUSD • PA + Supply Demand H4/M15 • Run gần nhất</text>
+  <rect class="active" x="284" y="484" width="92" height="34" rx="8"/>
+  <text class="font small ink" x="306" y="505">Tổng quan</text>
+  <rect class="panel-soft" x="386" y="484" width="86" height="34" rx="8"/>
+  <text class="font small muted" x="413" y="505">Vòng</text>
+  <rect class="panel-soft" x="482" y="484" width="86" height="34" rx="8"/>
+  <text class="font small muted" x="511" y="505">Lệnh</text>
+  <rect class="panel-soft" x="578" y="484" width="96" height="34" rx="8"/>
+  <text class="font small muted" x="606" y="505">Bộ nhớ</text>
+
+  <rect class="panel-soft" x="284" y="542" width="292" height="102" rx="8"/>
+  <text class="font tiny muted" x="306" y="568">Kết luận sau run</text>
+  <text class="font h3 ink" x="306" y="592">Có mẫu nhưng chất lượng thấp</text>
+  <text class="font small muted" x="306" y="616">WR/PF chưa đủ, cần siết vùng và M15.</text>
+  <rect class="panel-soft" x="596" y="542" width="292" height="102" rx="8"/>
+  <text class="font tiny muted" x="618" y="568">Best hiện tại</text>
+  <text class="font metric ink" x="618" y="598">51 lệnh</text>
+  <text class="font small muted" x="618" y="622">Vòng 6 • WR 35.29% • PF 1.14</text>
+  <rect class="panel-soft" x="908" y="542" width="292" height="102" rx="8"/>
+  <text class="font tiny muted" x="930" y="568">AI đang tối ưu</text>
+  <text class="font h3 ink" x="930" y="592">Tăng chất lượng setup</text>
+  <text class="font small muted" x="930" y="616">Lọc vùng H4 mạnh + xác nhận M15 rõ.</text>
+  <rect x="1220" y="542" width="292" height="102" rx="8" fill="#fff7ed" stroke="#f2c083"/>
+  <text class="font tiny amber" x="1242" y="568">Hành động tiếp theo</text>
+  <text class="font h3 ink" x="1242" y="592">Đào sâu hoặc đổi family</text>
+  <text class="font small muted" x="1242" y="616">Nếu 2 run nữa không cải thiện, đổi họ.</text>
+
+  <rect class="panel-soft" x="284" y="674" width="746" height="238" rx="8"/>
+  <text class="font h3 ink" x="306" y="704">Bảng tiến bộ theo vòng</text>
+  <text class="font tiny muted" x="306" y="726">Score chỉ dùng để xếp hạng ứng viên, không phải tỷ lệ thắng.</text>
+  <line class="line" x1="306" y1="750" x2="1006" y2="750"/>
+  <text class="font tiny muted" x="306" y="773">Vòng</text>
+  <text class="font tiny muted" x="375" y="773">Họ chiến lược</text>
+  <text class="font tiny muted" x="575" y="773">Lệnh</text>
+  <text class="font tiny muted" x="650" y="773">WR</text>
+  <text class="font tiny muted" x="725" y="773">RR</text>
+  <text class="font tiny muted" x="800" y="773">PF</text>
+  <text class="font tiny muted" x="885" y="773">Kết luận</text>
+  <text class="font small ink" x="306" y="806">1</text>
+  <text class="font small ink" x="375" y="806">Cân bằng H4/M15</text>
+  <text class="font small ink" x="575" y="806">16</text>
+  <text class="font small ink" x="650" y="806">31%</text>
+  <text class="font small ink" x="725" y="806">-0.08</text>
+  <text class="font small ink" x="800" y="806">0.86</text>
+  <text class="font small red" x="885" y="806">Yếu</text>
+  <text class="font small ink" x="306" y="838">3</text>
+  <text class="font small ink" x="375" y="838">Nới điều kiện</text>
+  <text class="font small ink" x="575" y="838">51</text>
+  <text class="font small ink" x="650" y="838">35%</text>
+  <text class="font small ink" x="725" y="838">0.09</text>
+  <text class="font small ink" x="800" y="838">1.14</text>
+  <text class="font small amber" x="885" y="838">Có mẫu</text>
+  <rect x="296" y="854" width="710" height="34" rx="8" fill="#eef6ff" stroke="#b7d4ff"/>
+  <text class="font small ink" x="306" y="876">6</text>
+  <text class="font small ink" x="375" y="876">Tối ưu nhanh: chất lượng</text>
+  <text class="font small ink" x="575" y="876">42</text>
+  <text class="font small ink" x="650" y="876">43%</text>
+  <text class="font small ink" x="725" y="876">1.42</text>
+  <text class="font small ink" x="800" y="876">1.38</text>
+  <text class="font small green" x="885" y="876">Đào sâu</text>
+
+  <rect class="panel-soft" x="1052" y="674" width="460" height="110" rx="8"/>
+  <text class="font h3 ink" x="1074" y="704">Ứng viên nên đào sâu</text>
+  <rect class="active" x="1074" y="722" width="194" height="42" rx="8"/>
+  <text class="font small ink" x="1090" y="747">Vòng 6 • chất lượng</text>
+  <rect class="panel" x="1284" y="722" width="194" height="42" rx="8"/>
+  <text class="font small ink" x="1300" y="747">Vòng 3 • đủ mẫu</text>
+
+  <rect class="panel-soft" x="1052" y="802" width="460" height="110" rx="8"/>
+  <text class="font h3 ink" x="1074" y="832">Hướng bị loại tạm thời</text>
+  <text class="font small muted" x="1074" y="860">Vòng RR 1:3: quá ít lệnh, WR không đủ tin cậy.</text>
+  <text class="font small muted" x="1074" y="884">Buy only demand: sample thấp, không vượt best.</text>
+</svg>

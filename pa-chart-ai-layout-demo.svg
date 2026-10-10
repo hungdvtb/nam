@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.16"/>
+    </filter>
+    <linearGradient id="chartBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="aiBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+    <style>
+      .bg { fill: #e8edf3; }
+      .panel { fill: #fff; stroke: #d8e0ea; stroke-width: 1; }
+      .muted { fill: #64748b; font: 400 22px Segoe UI, Arial, sans-serif; }
+      .tiny { fill: #64748b; font: 400 17px Segoe UI, Arial, sans-serif; }
+      .label { fill: #0f172a; font: 700 20px Segoe UI, Arial, sans-serif; }
+      .title { fill: #0f172a; font: 800 30px Segoe UI, Arial, sans-serif; }
+      .whiteTitle { fill: #f8fafc; font: 800 28px Segoe UI, Arial, sans-serif; }
+      .whiteText { fill: #cbd5e1; font: 500 18px Segoe UI, Arial, sans-serif; }
+      .chip { fill: #eef4ff; stroke: #bcd2ff; stroke-width: 1; }
+      .buttonBlue { fill: #2563eb; }
+      .buttonGreen { fill: #10b981; }
+      .buttonRed { fill: #ef4444; }
+      .buttonGhost { fill: #fff; stroke: #cbd5e1; stroke-width: 1; }
+      .chatUser { fill: #eff6ff; stroke: #bfdbfe; stroke-width: 1; }
+      .chatAi { fill: #fff; stroke: #d8e0ea; stroke-width: 1; }
+      .grid { stroke: #263244; stroke-width: 1; opacity: .9; }
+      .axis { fill: #94a3b8; font: 500 15px Segoe UI, Arial, sans-serif; }
+      .green { fill: #10b981; }
+      .red { fill: #ef4444; }
+      .lineGreen { stroke: #10b981; stroke-width: 3; fill: none; }
+      .lineBlue { stroke: #60a5fa; stroke-width: 2.5; fill: none; }
+      .ema { stroke: #f8fafc; stroke-width: 2; fill: none; opacity: .85; }
+      .swing { stroke: #f59e0b; stroke-width: 2; fill: none; stroke-dasharray: 7 7; opacity: .9; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1920" height="1080"/>
+
+  <!-- Top header -->
+  <rect x="32" y="24" width="1856" height="72" rx="14" fill="#ffffff" stroke="#d8e0ea"/>
+  <text x="60" y="70" class="title">Dạy Price Action trực tiếp</text>
+  <text x="540" y="69" class="muted">Chart bên trái, AI bên phải, mọi vùng/setup đều có bằng chứng trên biểu đồ</text>
+  <rect x="1508" y="42" width="116" height="38" rx="8" class="buttonGhost"/>
+  <text x="1536" y="67" class="label" font-size="17">Tải vùng</text>
+  <rect x="1638" y="42" width="110" height="38" rx="8" class="buttonGhost"/>
+  <text x="1668" y="67" class="label" font-size="17">Lưu nhãn</text>
+  <rect x="1762" y="42" width="100" height="38" rx="8" class="buttonBlue"/>
+  <text x="1789" y="67" fill="#fff" font="700 17px Segoe UI, Arial">Chạy AI</text>
+
+  <!-- Main shell -->
+  <rect x="32" y="116" width="1376" height="852" rx="18" fill="url(#chartBg)" filter="url(#shadow)"/>
+  <rect x="1424" y="116" width="464" height="852" rx="18" fill="url(#aiBg)" stroke="#d8e0ea" filter="url(#shadow)"/>
+
+  <!-- Chart toolbar -->
+  <rect x="52" y="136" width="1336" height="58" rx="12" fill="#0b1220" stroke="#263244"/>
+  <text x="76" y="173" class="whiteTitle">GBPUSD</text>
+  <text x="196" y="172" class="whiteText">H4</text>
+  <rect x="254" y="150" width="46" height="28" rx="6" fill="#1d4ed8"/>
+  <text x="267" y="170" fill="#fff" font="700 15px Segoe UI">H4</text>
+  <rect x="308" y="150" width="52" height="28" rx="6" fill="#172033"/>
+  <text x="321" y="170" class="whiteText" font-size="15">M15</text>
+  <rect x="378" y="150" width="118" height="28" rx="6" fill="#172033"/>
+  <text x="392" y="170" class="whiteText" font-size="15">EMA 200</text>
+  <rect x="510" y="150" width="124" height="28" rx="6" fill="#172033"/>
+  <text x="525" y="170" class="whiteText" font-size="15">Supply/Demand</text>
+  <rect x="1018" y="150" width="106" height="28" rx="6" fill="#172033"/>
+  <text x="1033" y="170" class="whiteText" font-size="15">Vẽ vùng</text>
+  <rect x="1140" y="150" width="94" height="28" rx="6" fill="#0f766e"/>
+  <text x="1157" y="170" fill="#fff" font="700 15px Segoe UI">Dạy PA</text>
+  <rect x="1248" y="150" width="116" height="28" rx="6" fill="#172033"/>
+  <text x="1264" y="170" class="whiteText" font-size="15">Replay setup</text>
+
+  <!-- Chart plot area -->
+  <rect x="64" y="216" width="1312" height="578" rx="10" fill="#111827" stroke="#263244"/>
+  <g>
+    <line x1="64" y1="300" x2="1376" y2="300" class="grid"/>
+    <line x1="64" y1="384" x2="1376" y2="384" class="grid"/>
+    <line x1="64" y1="468" x2="1376" y2="468" class="grid"/>
+    <line x1="64" y1="552" x2="1376" y2="552" class="grid"/>
+    <line x1="64" y1="636" x2="1376" y2="636" class="grid"/>
+    <line x1="210" y1="216" x2="210" y2="794" class="grid"/>
+    <line x1="356" y1="216" x2="356" y2="794" class="grid"/>
+    <line x1="502" y1="216" x2="502" y2="794" class="grid"/>
+    <line x1="648" y1="216" x2="648" y2="794" class="grid"/>
+    <line x1="794" y1="216" x2="794" y2="794" class="grid"/>
+    <line x1="940" y1="216" x2="940" y2="794" class="grid"/>
+    <line x1="1086" y1="216" x2="1086" y2="794" class="grid"/>
+    <line x1="1232" y1="216" x2="1232" y2="794" class="grid"/>
+  </g>
+
+  <!-- Supply demand zones -->
+  <rect x="152" y="574" width="256" height="86" fill="#10b981" opacity="0.18" stroke="#10b981" stroke-dasharray="7 6"/>
+  <text x="166" y="604" fill="#34d399" font="800 16px Segoe UI">Demand H4 - đang dạy</text>
+  <rect x="806" y="282" width="238" height="78" fill="#ef4444" opacity="0.16" stroke="#ef4444" stroke-dasharray="7 6"/>
+  <text x="820" y="312" fill="#f87171" font="800 16px Segoe UI">Supply H4</text>
+  <rect x="1116" y="486" width="178" height="72" fill="#10b981" opacity="0.13" stroke="#10b981" stroke-dasharray="7 6"/>
+
+  <!-- Indicator / swing lines -->
+  <path class="ema" d="M76 638 C190 610 260 578 352 552 C470 518 548 452 640 424 C752 390 858 420 952 446 C1078 482 1186 486 1362 430"/>
+  <path class="swing" d="M118 650 L270 565 L422 610 L594 420 L740 448 L918 330 L1080 502 L1288 408"/>
+
+  <!-- Candlesticks -->
+  <g stroke-width="2">
+    <line x1="104" y1="632" x2="104" y2="704" stroke="#10b981"/><rect x="98" y="648" width="12" height="38" fill="#10b981"/>
+    <line x1="128" y1="610" x2="128" y2="676" stroke="#10b981"/><rect x="122" y="626" width="12" height="28" fill="#10b981"/>
+    <line x1="152" y1="588" x2="152" y2="650" stroke="#10b981"/><rect x="146" y="608" width="12" height="24" fill="#10b981"/>
+    <line x1="176" y1="600" x2="176" y2="662" stroke="#ef4444"/><rect x="170" y="614" width="12" height="34" fill="#ef4444"/>
+    <line x1="200" y1="572" x2="200" y2="638" stroke="#10b981"/><rect x="194" y="590" width="12" height="26" fill="#10b981"/>
+    <line x1="224" y1="548" x2="224" y2="620" stroke="#10b981"/><rect x="218" y="566" width="12" height="32" fill="#10b981"/>
+    <line x1="248" y1="530" x2="248" y2="596" stroke="#10b981"/><rect x="242" y="548" width="12" height="24" fill="#10b981"/>
+    <line x1="272" y1="516" x2="272" y2="582" stroke="#10b981"/><rect x="266" y="534" width="12" height="28" fill="#10b981"/>
+    <line x1="296" y1="528" x2="296" y2="604" stroke="#ef4444"/><rect x="290" y="544" width="12" height="42" fill="#ef4444"/>
+    <line x1="320" y1="506" x2="320" y2="574" stroke="#10b981"/><rect x="314" y="524" width="12" height="26" fill="#10b981"/>
+    <line x1="344" y1="492" x2="344" y2="560" stroke="#10b981"/><rect x="338" y="510" width="12" height="30" fill="#10b981"/>
+    <line x1="368" y1="482" x2="368" y2="552" stroke="#ef4444"/><rect x="362" y="498" width="12" height="36" fill="#ef4444"/>
+    <line x1="392" y1="496" x2="392" y2="574" stroke="#ef4444"/><rect x="386" y="510" width="12" height="48" fill="#ef4444"/>
+    <line x1="416" y1="462" x2="416" y2="534" stroke="#10b981"/><rect x="410" y="482" width="12" height="24" fill="#10b981"/>
+    <line x1="440" y1="430" x2="440" y2="502" stroke="#10b981"/><rect x="434" y="450" width="12" height="32" fill="#10b981"/>
+    <line x1="464" y1="410" x2="464" y2="488" stroke="#10b981"/><rect x="458" y="432" width="12" height="34" fill="#10b981"/>
+    <line x1="488" y1="430" x2="488" y2="514" stroke="#ef4444"/><rect x="482" y="446" width="12" height="48" fill="#ef4444"/>
+    <line x1="512" y1="414" x2="512" y2="490" stroke="#10b981"/><rect x="506" y="432" width="12" height="30" fill="#10b981"/>
+    <line x1="536" y1="392" x2="536" y2="466" stroke="#10b981"/><rect x="530" y="412" width="12" height="28" fill="#10b981"/>
+    <line x1="560" y1="404" x2="560" y2="488" stroke="#ef4444"/><rect x="554" y="420" width="12" height="44" fill="#ef4444"/>
+    <line x1="584" y1="382" x2="584" y2="452" stroke="#10b981"/><rect x="578" y="402" width="12" height="26" fill="#10b981"/>
+    <line x1="608" y1="360" x2="608" y2="444" stroke="#10b981"/><rect x="602" y="382" width="12" height="34" fill="#10b981"/>
+    <line x1="632" y1="374" x2="632" y2="468" stroke="#ef4444"/><rect x="626" y="394" width="12" height="52" fill="#ef4444"/>
+    <line x1="656" y1="386" x2="656" y2="470" stroke="#ef4444"/><rect x="650" y="404" width="12" height="44" fill="#ef4444"/>
+    <line x1="680" y1="402" x2="680" y2="482" stroke="#10b981"/><rect x="674" y="420" width="12" height="28" fill="#10b981"/>
+    <line x1="704" y1="418" x2="704" y2="494" stroke="#ef4444"/><rect x="698" y="434" width="12" height="38" fill="#ef4444"/>
+    <line x1="728" y1="398" x2="728" y2="476" stroke="#10b981"/><rect x="722" y="416" width="12" height="30" fill="#10b981"/>
+    <line x1="752" y1="372" x2="752" y2="454" stroke="#10b981"/><rect x="746" y="392" width="12" height="34" fill="#10b981"/>
+    <line x1="776" y1="334" x2="776" y2="438" stroke="#10b981"/><rect x="770" y="360" width="12" height="46" fill="#10b981"/>
+    <line x1="800" y1="306" x2="800" y2="400" stroke="#10b981"/><rect x="794" y="330" width="12" height="38" fill="#10b981"/>
+    <line x1="824" y1="292" x2="824" y2="382" stroke="#ef4444"/><rect x="818" y="312" width="12" height="44" fill="#ef4444"/>
+    <line x1="848" y1="310" x2="848" y2="406" stroke="#ef4444"/><rect x="842" y="334" width="12" height="48" fill="#ef4444"/>
+    <line x1="872" y1="326" x2="872" y2="418" stroke="#10b981"/><rect x="866" y="348" width="12" height="28" fill="#10b981"/>
+    <line x1="896" y1="344" x2="896" y2="432" stroke="#ef4444"/><rect x="890" y="362" width="12" height="46" fill="#ef4444"/>
+    <line x1="920" y1="360" x2="920" y2="450" stroke="#ef4444"/><rect x="914" y="382" width="12" height="42" fill="#ef4444"/>
+    <line x1="944" y1="372" x2="944" y2="466" stroke="#ef4444"/><rect x="938" y="394" width="12" height="50" fill="#ef4444"/>
+    <line x1="968" y1="388" x2="968" y2="482" stroke="#10b981"/><rect x="962" y="410" width="12" height="32" fill="#10b981"/>
+    <line x1="992" y1="408" x2="992" y2="498" stroke="#ef4444"/><rect x="986" y="430" width="12" height="44" fill="#ef4444"/>
+    <line x1="1016" y1="430" x2="1016" y2="520" stroke="#ef4444"/><rect x="1010" y="448" width="12" height="48" fill="#ef4444"/>
+    <line x1="1040" y1="456" x2="1040" y2="550" stroke="#ef4444"/><rect x="1034" y="476" width="12" height="54" fill="#ef4444"/>
+    <line x1="1064" y1="486" x2="1064" y2="572" stroke="#10b981"/><rect x="1058" y="508" width="12" height="30" fill="#10b981"/>
+    <line x1="1088" y1="498" x2="1088" y2="586" stroke="#10b981"/><rect x="1082" y="518" width="12" height="34" fill="#10b981"/>
+    <line x1="1112" y1="474" x2="1112" y2="560" stroke="#10b981"/><rect x="1106" y="496" width="12" height="30" fill="#10b981"/>
+    <line x1="1136" y1="452" x2="1136" y2="544" stroke="#10b981"/><rect x="1130" y="474" width="12" height="34" fill="#10b981"/>
+    <line x1="1160" y1="438" x2="1160" y2="524" stroke="#ef4444"/><rect x="1154" y="456" width="12" height="40" fill="#ef4444"/>
+    <line x1="1184" y1="418" x2="1184" y2="508" stroke="#10b981"/><rect x="1178" y="438" width="12" height="32" fill="#10b981"/>
+    <line x1="1208" y1="398" x2="1208" y2="488" stroke="#10b981"/><rect x="1202" y="418" width="12" height="34" fill="#10b981"/>
+    <line x1="1232" y1="386" x2="1232" y2="472" stroke="#10b981"/><rect x="1226" y="406" width="12" height="30" fill="#10b981"/>
+    <line x1="1256" y1="370" x2="1256" y2="456" stroke="#10b981"/><rect x="1250" y="390" width="12" height="32" fill="#10b981"/>
+    <line x1="1280" y1="356" x2="1280" y2="444" stroke="#10b981"/><rect x="1274" y="376" width="12" height="34" fill="#10b981"/>
+    <line x1="1304" y1="342" x2="1304" y2="430" stroke="#ef4444"/><rect x="1298" y="362" width="12" height="42" fill="#ef4444"/>
+    <line x1="1328" y1="326" x2="1328" y2="412" stroke="#10b981"/><rect x="1322" y="346" width="12" height="30" fill="#10b981"/>
+  </g>
+
+  <!-- Current selected setup marker -->
+  <line x1="286" y1="612" x2="372" y2="538" class="lineGreen"/>
+  <circle cx="286" cy="612" r="9" fill="#10b981" stroke="#eafff7" stroke-width="3"/>
+  <circle cx="372" cy="538" r="9" fill="#10b981" stroke="#eafff7" stroke-width="3"/>
+  <text x="304" y="702" fill="#cbd5e1" font="600 16px Segoe UI">Vùng m chọn: Demand H4, chờ M15 phản ứng</text>
+  <text x="1304" y="248" class="axis">1.2900</text>
+  <text x="1304" y="332" class="axis">1.2800</text>
+  <text x="1304" y="416" class="axis">1.2700</text>
+  <text x="1304" y="500" class="axis">1.2600</text>
+  <text x="1304" y="584" class="axis">1.2500</text>
+  <text x="1304" y="668" class="axis">1.2400</text>
+
+  <!-- Bottom compact information dock -->
+  <rect x="64" y="814" width="1312" height="128" rx="12" fill="#ffffff" opacity="0.96"/>
+  <text x="90" y="850" class="label">Vùng đang học</text>
+  <rect x="90" y="866" width="220" height="46" rx="8" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="106" y="895" fill="#047857" font="800 19px Segoe UI">Demand H4</text>
+  <text x="338" y="850" class="label">Checklist</text>
+  <text x="338" y="878" class="tiny">✓ Thuận trend H4</text>
+  <text x="338" y="904" class="tiny">✓ Chạm vùng chưa bị phá</text>
+  <text x="562" y="850" class="label">M15 cần tìm</text>
+  <text x="562" y="878" class="tiny">Pin bar / engulfing / fakey</text>
+  <text x="562" y="904" class="tiny">SL sau vùng, TP tối thiểu 2R</text>
+  <text x="856" y="850" class="label">Bộ nhớ nhanh</text>
+  <rect x="856" y="868" width="114" height="34" rx="17" class="chip"/><text x="878" y="891" fill="#2563eb" font="700 15px Segoe UI">128 vùng</text>
+  <rect x="982" y="868" width="122" height="34" rx="17" class="chip"/><text x="1002" y="891" fill="#2563eb" font="700 15px Segoe UI">42 setup</text>
+  <rect x="1116" y="868" width="180" height="34" rx="17" fill="#fff7ed" stroke="#fed7aa"/><text x="1138" y="891" fill="#c2410c" font="700 15px Segoe UI">Cần thêm mẫu xấu</text>
+
+  <!-- AI side panel -->
+  <text x="1454" y="162" class="title">AI Coach</text>
+  <text x="1454" y="193" class="muted" font-size="20">Đang trao đổi về vùng đang chọn</text>
+  <rect x="1454" y="216" width="394" height="88" rx="12" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="1476" y="248" fill="#1d4ed8" font="800 20px Segoe UI">Demand H4 | GBPUSD</text>
+  <text x="1476" y="278" class="tiny">1.24480 - 1.24920 | trạng thái: còn dùng được</text>
+
+  <rect x="1454" y="326" width="394" height="70" rx="12" class="chatAi"/>
+  <text x="1476" y="354" fill="#0f172a" font="800 18px Segoe UI">AI</text>
+  <text x="1476" y="382" class="tiny">Vùng này ổn vì còn tươi, có BOS H4 trước đó.</text>
+  <rect x="1518" y="414" width="330" height="82" rx="12" class="chatUser"/>
+  <text x="1538" y="442" fill="#1d4ed8" font="800 18px Segoe UI">Bạn</text>
+  <text x="1538" y="470" class="tiny">Vùng này chưa ổn, trước đó giá quét nhiều lần.</text>
+  <rect x="1454" y="514" width="394" height="110" rx="12" class="chatAi"/>
+  <text x="1476" y="542" fill="#0f172a" font="800 18px Segoe UI">AI</text>
+  <text x="1476" y="570" class="tiny">Đã ghi nhớ: vùng bị chạm nhiều thì giảm điểm.</text>
+  <text x="1476" y="598" class="tiny">Gợi ý: chuyển vùng tiếp theo hoặc đánh dấu bỏ qua.</text>
+
+  <rect x="1454" y="650" width="394" height="52" rx="10" fill="#f8fafc" stroke="#d8e0ea"/>
+  <text x="1476" y="683" fill="#94a3b8" font="500 18px Segoe UI">Nhắn AI: vì sao vùng này tốt/xấu...</text>
+  <rect x="1454" y="718" width="118" height="42" rx="9" class="buttonGreen"/>
+  <text x="1481" y="745" fill="#fff" font="800 16px Segoe UI">Chọn vùng</text>
+  <rect x="1584" y="718" width="108" height="42" rx="9" class="buttonRed"/>
+  <text x="1610" y="745" fill="#fff" font="800 16px Segoe UI">Bỏ qua</text>
+  <rect x="1704" y="718" width="144" height="42" rx="9" class="buttonBlue"/>
+  <text x="1728" y="745" fill="#fff" font="800 16px Segoe UI">Sang vùng tiếp</text>
+
+  <rect x="1454" y="786" width="394" height="126" rx="12" fill="#ffffff" stroke="#d8e0ea"/>
+  <text x="1476" y="818" class="label">Thông tin được gom lại</text>
+  <text x="1476" y="848" class="tiny">• Lý do AI chọn/bỏ vùng</text>
+  <text x="1476" y="876" class="tiny">• Bảng lệnh/setup M15 liên quan</text>
+  <text x="1476" y="904" class="tiny">• Nhật ký m đã dạy AI ở vùng này</text>
+
+  <rect x="1454" y="930" width="394" height="20" rx="10" fill="#dbeafe"/>
+  <rect x="1454" y="930" width="248" height="20" rx="10" fill="#2563eb"/>
+  <text x="1454" y="980" class="tiny">Luồng làm việc: chọn vùng → chat/chấm → sang vùng tiếp → M15 setup</text>
+</svg>
+

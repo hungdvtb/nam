@@ -1,0 +1,14 @@
+{
+  "maxIterations": 3,
+  "mode": "dry-run",
+  "allowCodeChange": false,
+  "allowLiveTrading": false,
+  "allowMt5OrderExecution": false,
+  "allowDeleteData": false,
+  "requireBuildPass": true,
+  "requireBacktestPass": false,
+  "stopIfBuildFails": true,
+  "directorProvider": "mock",
+  "coderProvider": "codex-cli",
+  "reviewerProvider": "mock"
+}

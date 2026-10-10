@@ -1,0 +1,13 @@
+.env.local
+config/local.php
+data/
+runtime_data/
+.chrome-profile*/
+agents/runs/
+agents/tasks/current-*
+*.log
+*.sqlite
+*.sqlite3
+*.db
+node_modules/
+vendor/

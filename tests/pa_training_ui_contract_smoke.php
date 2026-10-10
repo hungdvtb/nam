@@ -1,0 +1,171 @@
+<?php
+
+declare(strict_types=1);
+
+$root = dirname(__DIR__);
+$index = file_get_contents($root . '/index.php') ?: '';
+$app = file_get_contents($root . '/assets/app.js') ?: '';
+$api = file_get_contents($root . '/api.php') ?: '';
+$css = file_get_contents($root . '/assets/styles.css') ?: '';
+$store = file_get_contents($root . '/lib/JsonStore.php') ?: '';
+
+$assertContains = static function (string $haystack, string $needle, string $message): void {
+    if (!str_contains($haystack, $needle)) {
+        throw new RuntimeException($message);
+    }
+};
+
+$assertNotContains = static function (string $haystack, string $needle, string $message): void {
+    if (str_contains($haystack, $needle)) {
+        throw new RuntimeException($message);
+    }
+};
+
+$assertContains($index, 'data-tab="pa-training"', 'sidebar must expose Dạy Price Action tab');
+$assertContains($index, 'id="tab-pa-training"', 'page must include Price Action training panel');
+$assertContains($index, 'paTrainingLoadZonesBtn', 'page must include load zones button');
+$assertContains($index, 'paTrainingStartCasesBtn', 'page must include start teaching cases button');
+$assertContains($index, 'Hàng đợi ca dạy', 'page must show a teaching-case queue instead of a plain zone list');
+$assertContains($index, 'paTrainingAiChatPanel', 'page must include PA chart chat panel');
+$assertContains($index, 'paTrainingChartMount', 'page must include PA mount for shared TradingView-style chart');
+$assertContains($index, 'mt5ChartMount', 'page must keep original MT5 chart mount');
+$assertContains($index, 'pa-coach-workspace', 'page must use chart plus AI coach workspace');
+$assertContains($index, 'pa-coach-toolbar', 'page must use compact one-line PA toolbar');
+$assertContains($index, 'paTrainingChatSendBtn', 'page must include PA chart chat send button');
+$assertContains($index, 'pa-ai-action-row', 'page must compact AI coach actions into one row');
+$assertContains($index, 'data-pa-action-help', 'AI coach quick-action buttons must explain themselves with popup notes');
+$assertContains($index, 'Đúng: chọn kết luận tạm', 'AI coach quick-action help must explain the Đúng button as a temporary session decision');
+$assertContains($index, 'M15: soi setup vào lệnh', 'AI coach quick-action help must explain the M15 button');
+$assertContains($index, 'paTrainingRelevantLessons', 'page must show relevant PA lessons inside AI coach');
+$assertContains($index, 'paTrainingSessionStrip', 'AI coach must show a temporary session summary before saving');
+$assertContains($index, 'data-pa-session-save', 'page must include one button to save the whole teaching session');
+$assertContains($index, 'Lưu phiên', 'AI coach must expose the whole-session save action');
+$assertContains($index, 'data-pa-lesson-save', 'page must include a quick action to save chat as a PA lesson');
+$assertContains($index, 'data-pa-case-decision', 'page must let the user score a complete PA trade case');
+$assertContains($index, 'Ca trade', 'page must present the PA workflow as one trade case flow');
+$assertNotContains($index, 'paTrainingSetupsBtn', 'page must not split PA teaching into a separate setup tab');
+$assertNotContains($index, 'Thông tin được gom lại', 'page must remove the collected-info box from AI coach');
+$assertContains($app, 'function paTrainingChatMessageHtml', 'frontend must render user and AI messages as a real chat thread');
+$assertContains($app, 'PA_CHAT_STORAGE_KEY', 'frontend must keep a local fallback copy of PA chat history');
+$assertContains($index, 'paTrainingChatComposerLabel', 'page must label the AI composer area');
+$assertContains($index, 'drawingSavePaZoneBtn', 'page must allow saving user-drawn buy/sell zones from the chart toolbar');
+$assertNotContains($index, 'paManualZoneForm', 'page must remove the manual zone form from the bottom dock');
+$assertNotContains($index, 'Chọn một vùng bên trái để xem chi tiết', 'page must remove the bottom zone-detail hint from the chart dock');
+$assertContains($index, 'data-chart-toggle="ema200"', 'chart controls must include EMA 200 toggle');
+$assertContains($app, 'function renderPaTraining()', 'frontend must render Price Action training screen');
+$assertContains($app, "api('pa_training_trade_cases'", 'frontend must create teaching trade cases from H4 zones');
+$assertContains($app, 'function loadPaTrainingTradeCases', 'frontend must load the teaching case queue');
+$assertContains($app, 'function startPaTrainingCaseQueue', 'frontend must start the first open teaching case');
+$assertContains($app, 'function paTrainingSelectedTeachingCase', 'frontend must track the selected teaching case');
+$assertContains($app, 'selectedTeachingCaseId', 'frontend must send selected teaching case id to AI chat context');
+$assertContains($app, "api('pa_training_feedback_save'", 'frontend must save PA feedback');
+$assertContains($app, "api('pa_training_ai_chat'", 'frontend must call PA chat API');
+$assertContains($app, "api('pa_training_chat_history'", 'frontend must reload saved PA chat history');
+$assertContains($app, 'function renderPaTrainingChat()', 'frontend must render PA chat');
+$assertContains($app, 'function helpEntryForTrigger', 'frontend must render popup notes for AI coach quick-action buttons');
+$assertContains($app, '[data-pa-action-help]', 'frontend help popover must attach to AI coach quick-action buttons');
+$assertContains($app, "document.addEventListener('dblclick'", 'AI action notes must open only on double click');
+$assertContains($app, "helpEventTrigger(event, '.help-trigger')", 'hover help must be limited to ordinary help triggers, not AI action buttons');
+$assertContains($app, 'function runPaActionButtonClick', 'AI action buttons must delay single-click actions so double-click can open notes safely');
+$assertContains($app, "event.key === 'Enter' && !event.shiftKey", 'PA AI chat input must send on Enter and keep Shift+Enter for new lines');
+$assertNotContains($app, "event.key === 'Enter' && (event.ctrlKey || event.metaKey)", 'PA AI chat input must no longer require Ctrl/Cmd+Enter');
+$assertContains($app, 'function renderPaTrainingRelevantLessons', 'frontend must show lessons related to the active PA context');
+$assertContains($app, 'function savePaTrainingLessonFromChat', 'frontend must let the user save chat as a PA lesson');
+$assertContains($app, 'lessons: Array.isArray', 'frontend must normalize PA lessons in memory');
+$assertContains($app, 'persistPaTrainingChatMessages', 'frontend must persist PA chat messages after sending');
+$assertContains($app, 'hasSelectedZone', 'frontend must send chat context even without a selected zone');
+$assertContains($app, 'hasSelectedTrade', 'frontend must send the selected backtest trade as PA chat context');
+$assertContains($app, 'function savePaTrainingTradeFeedback', 'frontend must save feedback for a complete PA trade case');
+$assertContains($app, 'paTrainingSessionDrafts: {}', 'frontend must initialize draft session decisions safely');
+$assertContains($app, 'paTrainingSessionDrafts', 'frontend must keep a draft decision until the user saves the whole session');
+$assertContains($app, 'function savePaTrainingCurrentSession', 'frontend must save a complete PA teaching session');
+$assertContains($app, 'function openPaTrainingSymbolFromAi', 'frontend must let AI chat open a requested symbol/timeframe');
+$assertContains($app, "action.type === 'open_symbol_chart'", 'frontend must execute AI symbol chart actions');
+$assertContains($app, "action.type === 'save_current_session'", 'frontend must execute AI save-session commands');
+$assertContains($app, "action.type === 'load_trade_cases'", 'frontend must execute AI load-case commands');
+$assertContains($app, "action.type === 'start_trade_cases'", 'frontend must execute AI start-case commands');
+$assertContains($app, "action.type === 'chart_boundary'", 'frontend must execute AI chart start/end commands');
+$assertContains($app, "action.type === 'fit_chart'", 'frontend must execute AI fit-chart commands');
+$assertContains($app, "action.type === 'save_chat_lesson'", 'frontend must execute AI save-lesson commands');
+$assertContains($app, 'setPaTrainingSessionDecision(action.decision', 'AI case feedback must set a temporary session decision before saving');
+$assertContains($app, 'savePaTrainingCurrentSession({ allowNeutral: true', 'AI can save the current session even when the user says xong ca này lưu đi');
+$assertContains($app, 'function paTrainingChartSessionSnapshot', 'frontend must capture chart state for saved teaching sessions');
+$assertContains($app, 'visibleBarRange', 'saved PA sessions must include the visible candle slice from the chart');
+$assertContains($app, 'function paTrainingCurrentSessionMessages', 'frontend must save chat scoped to the selected teaching case');
+$assertContains($app, 'const messages = paTrainingCurrentSessionMessages(trade, zone);', 'saved PA sessions must keep the full current-session chat');
+$assertContains($app, '[data-pa-session-save]', 'frontend must bind the whole-session save button');
+$assertContains($app, 'function renderPaTrainingChart()', 'frontend must render inline PA chart');
+$assertContains($app, 'function mountSharedMarketChart', 'frontend must move the shared chart between MT5 and PA training');
+$assertNotContains($app, 'paBacktestStatsToggle', 'PA chart should not expose the old backtest stats toggle in manual teaching mode');
+$assertContains($app, 'function loadPaTrainingChartForSelection', 'frontend must load PA chart data for selected zone');
+$assertContains($app, 'function openPaTrainingFullChart', 'frontend must allow opening the full chart when needed');
+$assertContains($app, "state.activeTab === 'pa-training'", 'PA fullscreen must switch the whole PA workspace instead of only the chart');
+$assertContains($app, 'is-pa-fullscreen', 'PA fullscreen must use a dedicated whole-workspace class');
+$assertContains($css ?? '', '#tab-pa-training.is-pa-fullscreen', 'CSS must fullscreen the whole Day PA panel');
+$assertContains($css ?? '', '.pa-ai-session-strip', 'CSS must style the whole-session summary strip');
+$assertContains($css ?? '', '.pa-ai-save-session', 'CSS must distinguish the whole-session save button');
+$assertContains($css ?? '', 'grid-template-columns: repeat(8', 'AI action rail must fit the extra save-session button on one row');
+$assertContains($app, 'function saveChartDrawingAsPaZone', 'frontend must save user-drawn H4 zones from the chart toolbar');
+$assertContains($app, 'function chartDrawingKey', 'frontend must store PA drawings by shared symbol key across timeframes');
+$assertContains($app, 'function jumpSelectedDrawingToTimeframe', 'frontend must jump a selected drawing to H4/H1/M15');
+$assertContains($index, 'drawingJumpM15Btn', 'floating drawing toolbar must include jump-to-M15 action');
+$assertContains($index, 'data-chart-tool="ellipse"', 'drawing toolbar must include a circle/ellipse tool for circling AI context');
+$assertContains($app, "if (state.activeTab === 'pa-training') return;", 'PA chart must suppress backtest warning/trade overlays');
+$assertContains($app, 'zone-rect-tool', 'frontend must show clear rectangle zone drawing tools');
+$assertContains($app, 'Canh buy', 'frontend must rename demand zones to canh buy for users');
+$assertContains($app, 'Canh sell', 'frontend must rename supply zones to canh sell for users');
+$assertContains($app, 'function startBoxDrawingDrag', 'frontend must support drag-to-draw rectangle zones');
+$assertContains($app, 'function resizeBoxDrawingByHandle', 'frontend must resize user-drawn price zones with edge/corner handles');
+$assertContains($app, 'function boxDrawingResizeHandles', 'frontend must expose resize handles for box drawings');
+$assertContains($app, 'function bindFloatingToolbarDrag', 'frontend must let the floating drawing toolbar be moved and reused');
+$assertContains($index, 'drawingToolbarDragHandle', 'floating drawing toolbar must include a drag handle');
+$assertContains($app, 'ema200', 'frontend must compute and render EMA 200');
+$assertContains($api, 'pa_training_zone_candidates', 'API must expose zone candidate action');
+$assertContains($api, 'pa_training_trade_cases', 'API must expose teaching trade case action');
+$assertContains($api, 'function paTrainingTradeCases', 'API must build a queue of teaching trade cases');
+$assertContains($api, 'function paTrainingBuildTeachingCase', 'API must convert H4 zone touches into teachable cases');
+$assertContains($api, 'auto_price_action_scan', 'API must scan from the beginning of chart data to create sequential PA teaching cases');
+$assertContains($api, 'firstTouchCandleNumber', 'generated cases must include candle numbers for the touch/entry candle');
+$assertContains($app, 'function drawPaTrainingTeachingCaseOverlay', 'frontend must draw the active teaching case zone, entry, SL and TP on chart');
+$assertContains($app, 'function focusPaTrainingTeachingCaseWindow', 'frontend must focus the chart around the active teaching case');
+$assertContains($app, 'chartReplayStartBtn', 'chart replay controls must include jump-to-start for manual backtesting');
+$assertContains($app, 'chartReplayBackBtn', 'chart replay controls must include previous-candle stepping');
+$assertContains($app, 'changeChartReplaySpeed', 'chart replay controls must support faster/slower candle playback');
+$assertContains($api, 'trade_cases', 'API must return generated teaching cases to the frontend');
+$assertContains($api, 'pa_training_chat_history', 'API must expose saved PA chat history');
+$assertContains($api, '\'caseId\' => $caseId', 'API chat scope must include the selected teaching case id');
+$assertContains($api, '($scope[\'caseId\'] ?? \'\') !== \'\' ? $messages', 'API must return full chat history for a selected teaching case');
+$assertContains($api, 'strlen($json) > 500000', 'API must preserve larger PA session snapshots before falling back to preview');
+$assertContains($api, 'function paTrainingOpenAICoachReply', 'PA AI Coach must call the OpenAI provider for real chat replies');
+$assertContains($api, 'pa_training_lesson_save', 'API must save PA lessons derived from chat');
+$assertContains($api, 'function savePaTrainingLesson', 'API must persist manually approved PA lessons');
+$assertContains($api, 'function paTrainingRelevantLessons', 'API must retrieve lessons relevant to the current PA context');
+$assertContains($api, 'relevant_lessons', 'PA AI Coach must receive relevant lessons in chat context');
+$assertContains($api, 'function paTrainingLessonFromFeedback', 'feedback save must create structured PA lessons');
+$assertContains($api, 'ProviderFactory::fromConfigFile', 'PA AI Coach must use the configured OpenAI API token/provider');
+$assertContains($api, 'paTrainingProviderErrorReply', 'PA AI Coach must be explicit when OpenAI is unavailable');
+$assertContains($api, "'used' => 'openai_chat'", 'PA AI Coach responses must report the OpenAI provider');
+$assertContains($api, 'function paTrainingAppendChatMessages', 'API must append PA chat messages to disk');
+$assertContains($api, 'set_indicator', 'API must understand simple chart indicator commands from chat');
+$assertContains($api, 'function paTrainingChatActions(string $message, array $context = [], array $history = [])', 'API chat action parser must receive context and history');
+$assertContains($api, 'function paTrainingExtractSymbolFromText', 'API must extract requested symbols from AI chat commands');
+$assertContains($api, 'open_symbol_chart', 'API must understand commands like mở EURUSD H4');
+$assertContains($api, 'save_current_session', 'API must understand chat commands to save the current teaching session');
+$assertContains($api, 'load_trade_cases', 'API must understand chat commands to load teaching cases');
+$assertContains($api, 'start_trade_cases', 'API must understand chat commands to start teaching cases');
+$assertContains($api, 'chart_boundary', 'API must understand chat commands to jump to chart start/end');
+$assertContains($api, 'fit_chart', 'API must understand chat commands to fit the full chart');
+$assertContains($api, 'save_chat_lesson', 'API must understand chat commands to save a lesson');
+$assertContains($api, 'function paTrainingMemory', 'API must persist PA training memory');
+$assertContains($api, 'save_case_feedback', 'API must understand feedback for a complete PA trade case');
+$assertContains($api, 'pa_training_manual_zone_save', 'API must save manual H4 zones');
+$assertContains($api, 'function paTrainingManualZones', 'API must read manual H4 zones');
+$assertContains($store, 'pa_training_memory', 'memory export must include PA training memory');
+$assertContains($store, 'pa_training_manual_zones', 'memory export must include manual PA zones');
+$assertContains($store, 'pa_training_chat_history', 'memory export must include PA chat history');
+
+echo "pa_training_ui_contract_smoke passed\n";
+
+
+
+
