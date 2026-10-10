@@ -1362,24 +1362,35 @@
                             <span id="marketChartMeta">Chưa chọn tệp</span>
                         </div>
                         <div class="chart-controls">
-                            <select id="chartSymbolSelect" aria-label="Mã đang xem"></select>
-                            <input id="chartCompareInput" type="text" placeholder="Nhập cặp tiền để so sánh">
-                            <button class="chart-control" id="chartAddCompareBtn" type="button">So sánh</button>
-                            <button class="chart-control" id="chartClearCompareBtn" type="button">Bỏ so sánh</button>
-                            <button class="chart-control" data-chart-timeframe="M1" type="button">M1</button>
-                            <button class="chart-control" data-chart-timeframe="M5" type="button">M5</button>
-                            <button class="chart-control" data-chart-timeframe="M15" type="button">M15</button>
-                            <button class="chart-control" data-chart-timeframe="M30" type="button">M30</button>
-                            <button class="chart-control" data-chart-timeframe="H1" type="button">H1</button>
-                            <button class="chart-control is-active" data-chart-timeframe="H4" type="button">H4</button>
-                            <button class="chart-control" data-chart-timeframe="D1" type="button">D1</button>
-                            <button class="chart-control" id="chartResetBtn" type="button">Đặt lại</button>
-                            <button class="chart-control" id="chartFitBtn" type="button">Vừa khung</button>
-                            <button class="chart-control chart-jump-control" id="chartJumpStartBtn" type="button" title="Về cây nến đầu tiên">|&lt;</button>
-                            <button class="chart-control chart-jump-control" id="chartJumpEndBtn" type="button" title="Về cây nến mới nhất">&gt;|</button>
-                            <button class="chart-control" id="chartScreenshotBtn" type="button">Chụp ảnh</button>
-                            <button class="chart-control" id="chartThemeBtn" type="button">Nền tối</button>
-                            <button class="chart-control" id="chartFullscreenBtn" type="button">Phóng to</button>
+                            <div class="chart-symbol-group" aria-label="Cặp tiền đang xem">
+                                <select id="chartSymbolSelect" aria-label="Mã đang xem"></select>
+                                <input id="chartCompareInput" type="text" placeholder="Nhập cặp tiền để so sánh">
+                                <button class="chart-control" id="chartAddCompareBtn" type="button">So sánh</button>
+                                <button class="chart-control" id="chartClearCompareBtn" type="button">Bỏ so sánh</button>
+                            </div>
+                            <div class="chart-timeframe-controls" aria-label="Khung thời gian">
+                                <button class="chart-control chart-timeframe-main is-active" data-chart-timeframe="H4" type="button">H4</button>
+                                <button class="chart-control chart-timeframe-main" data-chart-timeframe="M15" type="button">M15</button>
+                                <details class="chart-timeframe-more" id="chartTimeframeMore">
+                                    <summary class="chart-control" id="chartTimeframeMoreToggle">Khung khác <span aria-hidden="true">⌄</span></summary>
+                                    <div class="chart-timeframe-menu" aria-label="Khung thời gian khác">
+                                        <button class="chart-control" data-chart-timeframe="M1" type="button">M1</button>
+                                        <button class="chart-control" data-chart-timeframe="M5" type="button">M5</button>
+                                        <button class="chart-control" data-chart-timeframe="M30" type="button">M30</button>
+                                        <button class="chart-control" data-chart-timeframe="H1" type="button">H1</button>
+                                        <button class="chart-control" data-chart-timeframe="D1" type="button">D1</button>
+                                    </div>
+                                </details>
+                            </div>
+                            <div class="chart-view-controls" aria-label="Điều khiển biểu đồ">
+                                <button class="chart-control" id="chartResetBtn" type="button">Đặt lại</button>
+                                <button class="chart-control" id="chartFitBtn" type="button">Vừa khung</button>
+                                <button class="chart-control chart-jump-control" id="chartJumpStartBtn" type="button" title="Về cây nến đầu tiên">|&lt;</button>
+                                <button class="chart-control chart-jump-control" id="chartJumpEndBtn" type="button" title="Về cây nến mới nhất">&gt;|</button>
+                                <button class="chart-control" id="chartScreenshotBtn" type="button">Chụp ảnh</button>
+                                <button class="chart-control" id="chartThemeBtn" type="button">Nền tối</button>
+                                <button class="chart-control" id="chartFullscreenBtn" type="button">Phóng to</button>
+                            </div>
                         </div>
                     </div>
                     <div class="chart-feature-bar" id="chartFeatureBar">
@@ -1446,22 +1457,26 @@
                             <button class="chart-control" id="chartNextTradeBtn" type="button">Lệnh sau</button>
                         </div>
                         <div class="chart-feature-group replay-group">
-                            <strong>Phát lại</strong>
-                            <button class="chart-control" id="chartReplayStartBtn" type="button" title="Về nến đầu để bắt đầu backtest">|&lt;</button>
-                            <button class="chart-control" id="chartReplayBackBtn" type="button" title="Lùi một nến">‹</button>
-                            <button class="chart-control" id="chartReplayPlayBtn" type="button" title="Cho nến chạy / tạm dừng">▶</button>
-                            <button class="chart-control" id="chartReplayStepBtn" type="button" title="Tiến một nến">›</button>
-                            <button class="chart-control" id="chartReplayEndBtn" type="button" title="Về nến mới nhất">&gt;|</button>
-                            <button class="chart-control" id="chartReplaySlowerBtn" type="button" title="Chạy chậm hơn">−</button>
-                            <select id="chartReplaySpeed" aria-label="Tốc độ phát lại">
-                                <option value="0.5">0.5x</option>
-                                <option value="1">1x</option>
-                                <option value="2">2x</option>
-                                <option value="4">4x</option>
-                                <option value="8">8x</option>
-                                <option value="16">16x</option>
-                            </select>
-                            <button class="chart-control" id="chartReplayFasterBtn" type="button" title="Chạy nhanh hơn">+</button>
+                            <strong>Chạy nến</strong>
+                            <div class="chart-replay-buttons" aria-label="Điều khiển chạy nến">
+                                <button class="chart-control" id="chartReplayStartBtn" type="button" title="Về nến đầu để bắt đầu backtest">|&lt;</button>
+                                <button class="chart-control" id="chartReplayBackBtn" type="button" title="Lùi một nến">‹</button>
+                                <button class="chart-control" id="chartReplayPlayBtn" type="button" title="Cho nến chạy / tạm dừng">▶</button>
+                                <button class="chart-control" id="chartReplayStepBtn" type="button" title="Tiến một nến">›</button>
+                                <button class="chart-control" id="chartReplayEndBtn" type="button" title="Về nến mới nhất">&gt;|</button>
+                            </div>
+                            <div class="chart-replay-speed" aria-label="Tốc độ chạy nến">
+                                <button class="chart-control" id="chartReplaySlowerBtn" type="button" title="Chạy chậm hơn">−</button>
+                                <select id="chartReplaySpeed" aria-label="Tốc độ phát lại">
+                                    <option value="0.5">0.5x</option>
+                                    <option value="1">1x</option>
+                                    <option value="2">2x</option>
+                                    <option value="4">4x</option>
+                                    <option value="8">8x</option>
+                                    <option value="16">16x</option>
+                                </select>
+                                <button class="chart-control" id="chartReplayFasterBtn" type="button" title="Chạy nhanh hơn">+</button>
+                            </div>
                             <input id="chartReplayRange" type="range" min="0" max="0" value="0">
                             <span id="chartReplayLabel">Chưa có dữ liệu</span>
                         </div>
@@ -1751,9 +1766,9 @@
                             <select id="paTrainingSymbolSelect"></select>
                         </label>
                         <label class="field pa-compact-field is-timeframe">
-                            <span>Khung</span>
+                            <span>Khung chính</span>
                             <select id="paTrainingTimeframeSelect">
-                                <option value="H4">H4</option>
+                                <option value="H4">H4 / M15</option>
                             </select>
                         </label>
                         <label class="field pa-compact-field">

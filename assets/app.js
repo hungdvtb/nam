@@ -2345,6 +2345,11 @@
         $$('[data-chart-timeframe]').forEach((button) => {
             button.classList.toggle('is-active', button.dataset.chartTimeframe === state.chartView.timeframe);
         });
+        const moreMenu = $('#chartTimeframeMore');
+        const moreToggle = $('#chartTimeframeMoreToggle');
+        const hiddenActive = !!$('.chart-timeframe-menu [data-chart-timeframe].is-active');
+        if (moreMenu) moreMenu.classList.toggle('has-active-timeframe', hiddenActive);
+        if (moreToggle) moreToggle.classList.toggle('is-active', hiddenActive);
     }
 
     function findMarketFile(symbol, timeframe) {
@@ -11032,7 +11037,11 @@
         $('#chartAddCompareBtn')?.addEventListener('click', () => addCompareSymbol().catch((e) => showToast(e.message)));
         $('#chartClearCompareBtn')?.addEventListener('click', clearCompareSymbols);
         $$('[data-chart-timeframe]').forEach((button) => {
-            button.addEventListener('click', () => changeChartTimeframe(button.dataset.chartTimeframe).catch((e) => showToast(e.message)));
+            button.addEventListener('click', () => {
+                const menu = button.closest('.chart-timeframe-more');
+                if (menu) menu.open = false;
+                changeChartTimeframe(button.dataset.chartTimeframe).catch((e) => showToast(e.message));
+            });
         });
         $('#chartTypeSelect')?.addEventListener('change', (event) => {
             state.chartView.chartType = event.target.value || 'candles';
