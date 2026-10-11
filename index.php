@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-balanced2">
+    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-contained">
 </head>
 <body>
     <div class="app-shell">
@@ -1461,11 +1461,9 @@
                         <div class="chart-feature-group replay-group">
                             <strong title="Chạy nến để backtest thủ công">Nến</strong>
                             <div class="chart-replay-buttons" aria-label="Điều khiển chạy nến">
-                                <button class="chart-control" id="chartReplayStartBtn" type="button" title="Về nến đầu để bắt đầu backtest">|&lt;</button>
                                 <button class="chart-control" id="chartReplayBackBtn" type="button" title="Lùi một nến">‹</button>
                                 <button class="chart-control" id="chartReplayPlayBtn" type="button" title="Cho nến chạy / tạm dừng">▶</button>
                                 <button class="chart-control" id="chartReplayStepBtn" type="button" title="Tiến một nến">›</button>
-                                <button class="chart-control" id="chartReplayEndBtn" type="button" title="Về nến mới nhất">&gt;|</button>
                             </div>
                             <div class="chart-replay-speed" aria-label="Tốc độ chạy nến">
                                 <button class="chart-control" id="chartReplaySlowerBtn" type="button" title="Chạy chậm hơn">−</button>
@@ -1947,7 +1945,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261011-toolbar-balanced2"></script>
+    <script src="assets/app.js?v=20261011-pa-toolbar-contained"></script>
 </body>
 </html>
 

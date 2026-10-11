@@ -142,7 +142,7 @@ $assertContains($api, 'auto_price_action_scan', 'API must scan from the beginnin
 $assertContains($api, 'firstTouchCandleNumber', 'generated cases must include candle numbers for the touch/entry candle');
 $assertContains($app, 'function drawPaTrainingTeachingCaseOverlay', 'frontend must draw the active teaching case zone, entry, SL and TP on chart');
 $assertContains($app, 'function focusPaTrainingTeachingCaseWindow', 'frontend must focus the chart around the active teaching case');
-$assertContains($app, 'chartReplayStartBtn', 'chart replay controls must include jump-to-start for manual backtesting');
+$assertContains($index, 'chartJumpStartBtn', 'chart toolbar should keep a single jump-to-start control beside chart fit buttons');
 $assertContains($app, 'chartReplayBackBtn', 'chart replay controls must include previous-candle stepping');
 $assertContains($app, 'changeChartReplaySpeed', 'chart replay controls must support faster/slower candle playback');
 $assertContains($api, 'trade_cases', 'API must return generated teaching cases to the frontend');

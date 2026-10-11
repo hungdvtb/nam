@@ -11334,8 +11334,19 @@
         $('#chartFitBtn')?.addEventListener('click', fitFullChart);
         $('#chartFitHorizontalBtn')?.addEventListener('click', fitChartHorizontally);
         $('#chartFitVerticalBtn')?.addEventListener('click', fitChartVertically);
-        $('#chartJumpStartBtn')?.addEventListener('click', () => jumpChartToBoundary('start'));
-        $('#chartJumpEndBtn')?.addEventListener('click', () => jumpChartToBoundary('end'));
+        $('#chartJumpStartBtn')?.addEventListener('click', () => {
+            stopChartReplay(false);
+            state.chartView.replay.enabled = false;
+            state.chartView.replay.index = 0;
+            jumpChartToBoundary('start');
+        });
+        $('#chartJumpEndBtn')?.addEventListener('click', () => {
+            const last = Math.max(0, (state.activeMarketData?.bars || []).length - 1);
+            stopChartReplay(false);
+            state.chartView.replay.enabled = false;
+            state.chartView.replay.index = last;
+            jumpChartToBoundary('end');
+        });
         $('#chartScreenshotBtn')?.addEventListener('click', takeChartScreenshot);
         $('#chartThemeBtn')?.addEventListener('click', toggleChartTheme);
         $('#chartZoomBoxBtn')?.addEventListener('click', () => setChartTool('zoom-box'));
@@ -11359,15 +11370,6 @@
                 persistChartSettings();
                 if (state.activeMarketData) drawMarketChart(state.activeMarketData);
             });
-        });
-        $('#chartReplayStartBtn')?.addEventListener('click', () => {
-            stopChartReplay(false);
-            setChartReplayIndex(0, true);
-        });
-        $('#chartReplayEndBtn')?.addEventListener('click', () => {
-            const last = Math.max(0, (state.activeMarketData?.bars || []).length - 1);
-            stopChartReplay(false);
-            setChartReplayIndex(last, true);
         });
         $('#chartReplayBackBtn')?.addEventListener('click', () => {
             const current = state.chartView.replay.enabled ? state.chartView.replay.index : state.chartView.lastLayout?.first || 0;
