@@ -2353,7 +2353,33 @@
     }
 
     function findMarketFile(symbol, timeframe) {
-        return (state.marketFiles || []).find((item) => item.symbol === symbol && item.timeframe === timeframe);
+        const wantedSymbol = normalizeSymbolKey(symbol);
+        const wantedTimeframe = String(timeframe || '').toUpperCase();
+        return (state.marketFiles || []).find((item) => normalizeSymbolKey(item.symbol) === wantedSymbol && String(item.timeframe || '').toUpperCase() === wantedTimeframe) || null;
+    }
+
+    function findBestMarketFileForSymbol(symbol, preferredTimeframe = 'H4') {
+        const wantedSymbol = normalizeSymbolKey(symbol);
+        if (!wantedSymbol) return null;
+        const candidates = [
+            preferredTimeframe,
+            state.paTrainingChartTimeframe,
+            state.chartView.timeframe,
+            'H4',
+            'M15',
+            'H1',
+            'M30',
+            'M5',
+            'M1',
+            'D1',
+        ]
+            .map((value) => String(value || '').toUpperCase())
+            .filter((value, index, list) => value && list.indexOf(value) === index);
+        for (const timeframe of candidates) {
+            const file = findMarketFile(wantedSymbol, timeframe);
+            if (file) return file;
+        }
+        return (state.marketFiles || []).find((item) => normalizeSymbolKey(item.symbol) === wantedSymbol) || null;
     }
 
     async function openWatchSymbol(symbol) {
@@ -2466,7 +2492,7 @@
         state.chartView.selectedTradeId = null;
         state.chartView.crosshairPoint = null;
         state.chartView.analyticsCache = {};
-        stopChartReplay(false);
+        stopChartReplay(true);
         resetChartView(false);
         renderMarketFiles();
         renderChartSymbolSelect();
@@ -3527,24 +3553,29 @@
     }
 
     async function loadPaTrainingChartForSymbol(symbol, timeframe = 'H4', options = {}) {
-        const normalizedTimeframe = String(timeframe || 'H4').toUpperCase();
-        const normalizedSymbol = String(symbol || '').toUpperCase();
-        state.paTrainingChartTimeframe = normalizedTimeframe;
-        const file = findMarketFile(normalizedSymbol, normalizedTimeframe);
+        const requestedTimeframe = String(timeframe || 'H4').toUpperCase();
+        const normalizedSymbol = normalizeSymbolKey(symbol);
+        state.paTrainingChartTimeframe = requestedTimeframe;
+        const file = findBestMarketFileForSymbol(normalizedSymbol, requestedTimeframe);
         if (!file) {
+            const label = normalizedSymbol || String(symbol || '').toUpperCase();
             state.paTrainingChartData = null;
-            state.paTrainingChartError = `${normalizedSymbol} ${normalizedTimeframe} chưa có dữ liệu.`;
+            state.paTrainingChartError = label + ' ' + requestedTimeframe + ' chưa có dữ liệu.';
             renderPaTrainingChart();
-            if (!options.silent) showToast(`${normalizedSymbol} ${normalizedTimeframe} chưa có dữ liệu. Vào Dữ liệu & MT5 để lấy thêm.`);
-            return;
+            if (!options.silent) showToast(label + ' chưa có dữ liệu chart. Vào Dữ liệu & MT5 để lấy thêm.');
+            return false;
         }
+        const resolvedSymbol = file.symbol || normalizedSymbol;
+        const resolvedTimeframe = String(file.timeframe || requestedTimeframe).toUpperCase();
+        state.paTrainingChartTimeframe = resolvedTimeframe;
         state.paTrainingChartLoading = true;
         state.paTrainingChartError = '';
         renderPaTrainingChart();
         try {
             if (state.activeTab === 'pa-training') mountSharedMarketChart('pa-training');
-            state.chartView.timeframe = normalizedTimeframe;
+            state.chartView.timeframe = resolvedTimeframe;
             await loadMarketData(file.file);
+            state.paTrainingSymbol = resolvedSymbol;
             state.paTrainingChartData = state.activeMarketData;
             state.paTrainingChartError = '';
             const teachingCase = paTrainingSelectedTeachingCase();
@@ -3553,9 +3584,11 @@
             if (anchor) {
                 focusChartTime(timeToSeconds(anchor));
             }
+            return true;
         } catch (error) {
             state.paTrainingChartError = error.message;
             if (!options.silent) showToast(error.message);
+            return false;
         } finally {
             state.paTrainingChartLoading = false;
             renderPaTrainingChart();
@@ -3773,7 +3806,8 @@
             if (data.pa_training_memory) {
                 state.paTrainingMemory = normalizePaTrainingMemory(data.pa_training_memory);
             }
-            await executePaTrainingChatActions(data.actions || []);
+            const actions = paTrainingActionsWithLocalFallback(data.actions || [], message, historyBeforeSend);
+            await executePaTrainingChatActions(actions);
         } catch (error) {
             state.paTrainingChatError = error.message;
             showToast(error.message);
@@ -3781,6 +3815,53 @@
             state.paTrainingChatLoading = false;
             renderPaTraining();
         }
+    }
+
+    function foldPaTrainingCommandText(text) {
+        return String(text || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[đĐ]/g, 'd')
+            .toLowerCase();
+    }
+
+    function extractPaTrainingSymbolFromChatText(text) {
+        const match = String(text || '').match(/\b([A-Z]{3})[\s_\/.-]?([A-Z]{3})\b/i);
+        if (!match) return '';
+        const known = new Set(['AUD', 'CAD', 'CHF', 'EUR', 'GBP', 'JPY', 'NZD', 'USD', 'XAU', 'XAG', 'BTC', 'ETH']);
+        const base = String(match[1] || '').toUpperCase();
+        const quote = String(match[2] || '').toUpperCase();
+        if (!known.has(base) || !known.has(quote)) return '';
+        return normalizeSymbolKey(base + quote);
+    }
+
+    function extractPaTrainingTimeframeFromChatText(text) {
+        const match = foldPaTrainingCommandText(text).match(/\b(m1|m5|m15|m30|h1|h4|d1)\b/i);
+        return match ? String(match[1] || '').toUpperCase() : '';
+    }
+
+    function inferPaTrainingOpenSymbolAction(message, history = []) {
+        const folded = foldPaTrainingCommandText(message);
+        const wantsOpen = /\b(mo|xem|chart|bieu do|chuyen|doi|sang|open)\b/.test(folded);
+        const timeframe = extractPaTrainingTimeframeFromChatText(message);
+        let symbol = extractPaTrainingSymbolFromChatText(message);
+        if (!symbol && wantsOpen) {
+            for (let i = history.length - 1; i >= 0; i -= 1) {
+                symbol = extractPaTrainingSymbolFromChatText(history[i]?.content || '');
+                if (symbol) break;
+            }
+        }
+        if (!symbol || (!wantsOpen && !timeframe)) return null;
+        return { type: 'open_symbol_chart', symbol, timeframe };
+    }
+
+    function paTrainingActionsWithLocalFallback(actions, message, history = []) {
+        const list = Array.isArray(actions) ? actions.filter(Boolean) : [];
+        const inferred = inferPaTrainingOpenSymbolAction(message, history);
+        if (!inferred) return list;
+        const hasSameOpenAction = list.some((action) => action?.type === 'open_symbol_chart' && sameSymbol(action.symbol, inferred.symbol));
+        if (!hasSameOpenAction) list.unshift(inferred);
+        return list;
     }
 
     function applyPaTrainingIndicatorAction(action) {
@@ -4076,26 +4157,43 @@
     }
 
     async function openPaTrainingSymbolFromAi(symbol, timeframe = state.paTrainingChartTimeframe || 'H4', options = {}) {
-        const normalizedSymbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const targetTimeframe = String(timeframe || state.paTrainingChartTimeframe || 'H4').toUpperCase();
+        const normalizedSymbol = normalizeSymbolKey(symbol);
+        const requestedTimeframe = String(timeframe || state.paTrainingChartTimeframe || 'H4').toUpperCase();
         if (!normalizedSymbol) {
             showToast('AI chưa xác định được cặp tiền cần mở.');
-            return;
+            return false;
         }
-        state.paTrainingSymbol = normalizedSymbol;
+        const file = findBestMarketFileForSymbol(normalizedSymbol, requestedTimeframe);
+        if (!file) {
+            showToast(normalizedSymbol + ' chưa có dữ liệu chart. Vào Dữ liệu & MT5 để lấy thêm.');
+            return false;
+        }
+        const resolvedSymbol = file.symbol || normalizedSymbol;
+        const resolvedTimeframe = String(file.timeframe || requestedTimeframe).toUpperCase();
+        state.paTrainingSymbol = resolvedSymbol;
+        state.paTrainingTimeframe = 'H4';
+        state.paTrainingChartTimeframe = resolvedTimeframe;
+        state.paTrainingZones = [];
+        state.paTrainingTradeCases = [];
         state.paTrainingSelectedCaseId = '';
         state.paTrainingSelectedZoneId = '';
+        state.paTrainingCaseError = '';
+        state.paTrainingError = '';
+        state.chartView.selectedTradeId = null;
+        stopChartReplay(true);
         const symbolSelect = $('#paTrainingSymbolSelect');
         if (symbolSelect) {
-            const exists = Array.from(symbolSelect.options || []).some((option) => option.value === normalizedSymbol);
-            if (!exists) symbolSelect.add(new Option(normalizedSymbol, normalizedSymbol));
-            symbolSelect.value = normalizedSymbol;
+            const exists = Array.from(symbolSelect.options || []).some((option) => normalizeSymbolKey(option.value) === normalizeSymbolKey(resolvedSymbol));
+            if (!exists) symbolSelect.add(new Option(resolvedSymbol, resolvedSymbol));
+            symbolSelect.value = resolvedSymbol;
         }
         const timeframeSelect = $('#paTrainingTimeframeSelect');
-        if (timeframeSelect) timeframeSelect.value = targetTimeframe;
-        await loadPaTrainingChartForSymbol(normalizedSymbol, targetTimeframe, { silent: options.silent === true });
-        if (!options.silent) showToast(`Đã mở ${normalizedSymbol} ${targetTimeframe} theo lệnh AI.`);
+        if (timeframeSelect) timeframeSelect.value = 'H4';
+        const opened = await loadPaTrainingChartForSymbol(resolvedSymbol, resolvedTimeframe, { silent: options.silent === true });
+        if (opened && !options.silent) showToast('Đã mở ' + resolvedSymbol + ' ' + resolvedTimeframe + ' theo lệnh AI.');
+        state.paTrainingChatLoadedKey = '';
         renderPaTraining();
+        return opened;
     }
     async function openPaTrainingFullChart(timeframe = state.paTrainingChartTimeframe || 'H4') {
         const zone = paTrainingSelectedZone();

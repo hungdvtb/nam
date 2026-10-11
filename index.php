@@ -1941,7 +1941,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20260701-s49"></script>
+    <script src="assets/app.js?v=20261011-ai-symbol-action2"></script>
 </body>
 </html>
 

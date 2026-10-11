@@ -80,6 +80,8 @@ $assertContains($app, 'paTrainingSessionDrafts: {}', 'frontend must initialize d
 $assertContains($app, 'paTrainingSessionDrafts', 'frontend must keep a draft decision until the user saves the whole session');
 $assertContains($app, 'function savePaTrainingCurrentSession', 'frontend must save a complete PA teaching session');
 $assertContains($app, 'function openPaTrainingSymbolFromAi', 'frontend must let AI chat open a requested symbol/timeframe');
+$assertContains($app, 'function paTrainingActionsWithLocalFallback', 'frontend must infer simple open-symbol commands when the API response has no action');
+$assertContains($app, 'function inferPaTrainingOpenSymbolAction', 'frontend must parse commands like mở GBPUSD from the chat box');
 $assertContains($app, "action.type === 'open_symbol_chart'", 'frontend must execute AI symbol chart actions');
 $assertContains($app, "action.type === 'save_current_session'", 'frontend must execute AI save-session commands');
 $assertContains($app, "action.type === 'load_trade_cases'", 'frontend must execute AI load-case commands');
