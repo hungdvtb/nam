@@ -25,6 +25,9 @@ $assertContains($index, 'data-tab="pa-training"', 'sidebar must expose Dạy Pri
 $assertContains($index, 'id="tab-pa-training"', 'page must include Price Action training panel');
 $assertContains($index, 'paTrainingLoadZonesBtn', 'page must include load zones button');
 $assertContains($index, 'paTrainingStartCasesBtn', 'page must include start teaching cases button');
+$assertContains($index, 'paTrainingSymbolSearch', 'Day PA symbol selector must be searchable');
+$assertContains($index, 'paTrainingSymbolList', 'Day PA symbol search must expose quick suggestions');
+$assertContains($index, 'paTrainingSymbolSelect" aria-label="Cặp tiền đang chọn" hidden', 'old Day PA symbol select must stay hidden as state bridge');
 $assertContains($index, 'Hàng đợi ca dạy', 'page must show a teaching-case queue instead of a plain zone list');
 $assertContains($index, 'paTrainingAiChatPanel', 'page must include PA chart chat panel');
 $assertContains($index, 'paTrainingChartMount', 'page must include PA mount for shared TradingView-style chart');
@@ -55,6 +58,8 @@ $assertNotContains($index, 'paManualZoneForm', 'page must remove the manual zone
 $assertNotContains($index, 'Chọn một vùng bên trái để xem chi tiết', 'page must remove the bottom zone-detail hint from the chart dock');
 $assertContains($index, 'data-chart-toggle="ema200"', 'chart controls must include EMA 200 toggle');
 $assertContains($app, 'function renderPaTraining()', 'frontend must render Price Action training screen');
+$assertContains($app, 'function matchPaTrainingSymbol', 'frontend must match typed symbol search text to saved chart data');
+$assertContains($app, 'function changePaTrainingSymbol', 'frontend must switch Day PA symbols from the search box');
 $assertContains($app, "api('pa_training_trade_cases'", 'frontend must create teaching trade cases from H4 zones');
 $assertContains($app, 'function loadPaTrainingTradeCases', 'frontend must load the teaching case queue');
 $assertContains($app, 'function startPaTrainingCaseQueue', 'frontend must start the first open teaching case');
@@ -108,6 +113,9 @@ $assertContains($app, 'function openPaTrainingFullChart', 'frontend must allow o
 $assertContains($app, "state.activeTab === 'pa-training'", 'PA fullscreen must switch the whole PA workspace instead of only the chart');
 $assertContains($app, 'is-pa-fullscreen', 'PA fullscreen must use a dedicated whole-workspace class');
 $assertContains($css ?? '', '#tab-pa-training.is-pa-fullscreen', 'CSS must fullscreen the whole Day PA panel');
+$assertContains($css ?? '', '.pa-symbol-search-wrap', 'CSS must style the searchable Day PA symbol selector');
+$assertContains($css ?? '', '.market-chart-panel.is-pa-embedded .chart-symbol-group', 'PA embedded chart must hide the duplicate chart symbol selector');
+$assertContains($css ?? '', 'flex-grow: 1.7', 'PA chart toolbar replay group must flex to fill the available row');
 $assertContains($css ?? '', '.pa-ai-session-strip', 'CSS must style the whole-session summary strip');
 $assertContains($css ?? '', '.pa-ai-save-session', 'CSS must distinguish the whole-session save button');
 $assertContains($css ?? '', 'grid-template-columns: repeat(8', 'AI action rail must fit the extra save-session button on one row');

@@ -2599,6 +2599,57 @@
     function sameSymbol(a, b) {
         return normalizeSymbolKey(a) === normalizeSymbolKey(b);
     }
+
+    function matchPaTrainingSymbol(value, symbols = paTrainingSymbols()) {
+        const query = normalizeSymbolKey(value);
+        if (!query) return '';
+        return symbols.find((symbol) => sameSymbol(symbol, query))
+            || symbols.find((symbol) => normalizeSymbolKey(symbol).startsWith(query))
+            || symbols.find((symbol) => normalizeSymbolKey(symbol).includes(query))
+            || query;
+    }
+
+    function updatePaTrainingSymbolControl(symbols, options = {}) {
+        const symbol = state.paTrainingSymbol || '';
+        const symbolSelect = $('#paTrainingSymbolSelect');
+        const symbolSearch = $('#paTrainingSymbolSearch');
+        const symbolList = $('#paTrainingSymbolList');
+        if (symbolSelect) {
+            symbolSelect.innerHTML = symbols.length
+                ? symbols.map((item) => `<option value="${escapeAttr(item)}">${escapeHtml(item)}</option>`).join('')
+                : '<option value="">Chưa có dữ liệu</option>';
+            symbolSelect.value = symbol;
+        }
+        if (symbolList) {
+            symbolList.innerHTML = symbols.map((item) => `<option value="${escapeAttr(item)}"></option>`).join('');
+        }
+        if (symbolSearch && (options.force === true || document.activeElement !== symbolSearch)) {
+            symbolSearch.value = symbol;
+        }
+    }
+
+    function changePaTrainingSymbol(value) {
+        const symbols = paTrainingSymbols();
+        const next = matchPaTrainingSymbol(value, symbols);
+        if (!next) return;
+        const existing = symbols.find((symbol) => sameSymbol(symbol, next));
+        if (symbols.length && !existing) {
+            showToast(`${next} chưa có dữ liệu H4/M15. Tải dữ liệu trước rồi chọn lại.`);
+            updatePaTrainingSymbolControl(symbols, { force: true });
+            return;
+        }
+        state.paTrainingSymbol = existing || next;
+        state.paTrainingZones = [];
+        state.paTrainingTradeCases = [];
+        state.paTrainingSelectedCaseId = '';
+        state.paTrainingSelectedZoneId = '';
+        state.paTrainingChartData = null;
+        state.paTrainingChartError = '';
+        updatePaTrainingSymbolControl(symbols, { force: true });
+        renderPaTraining();
+        openPaTrainingSymbolChart('H4').catch((e) => showToast(e.message));
+    }
+
     function renderPaTraining() {
         const panel = $('#tab-pa-training');
         if (!panel) return;
@@ -2606,13 +2657,7 @@
         if (!state.paTrainingSymbol && symbols.length) {
             state.paTrainingSymbol = symbols[0];
         }
-        const symbolSelect = $('#paTrainingSymbolSelect');
-        if (symbolSelect) {
-            symbolSelect.innerHTML = symbols.length
-                ? symbols.map((symbol) => `<option value="${escapeAttr(symbol)}">${escapeHtml(symbol)}</option>`).join('')
-                : '<option value="">Chưa có dữ liệu</option>';
-            symbolSelect.value = state.paTrainingSymbol || '';
-        }
+        updatePaTrainingSymbolControl(symbols);
         const timeframeSelect = $('#paTrainingTimeframeSelect');
         if (timeframeSelect) timeframeSelect.value = state.paTrainingTimeframe || 'H4';
         const filterSelect = $('#paTrainingZoneFilter');
@@ -14957,16 +15002,13 @@
         $('#paTrainingChartH4Btn')?.addEventListener('click', () => openPaTrainingChart('H4').catch((e) => showToast(e.message)));
         $('#paTrainingChartM15Btn')?.addEventListener('click', () => openPaTrainingChart('M15').catch((e) => showToast(e.message)));
         $('#paTrainingChartOpenMt5Btn')?.addEventListener('click', () => openPaTrainingFullChart().catch((e) => showToast(e.message)));
-        $('#paTrainingSymbolSelect')?.addEventListener('change', (event) => {
-            state.paTrainingSymbol = event.target.value;
-            state.paTrainingZones = [];
-            state.paTrainingTradeCases = [];
-            state.paTrainingSelectedCaseId = '';
-            state.paTrainingSelectedZoneId = '';
-            state.paTrainingChartData = null;
-            state.paTrainingChartError = '';
-            renderPaTraining();
-            openPaTrainingSymbolChart('H4').catch((e) => showToast(e.message));
+        $('#paTrainingSymbolSelect')?.addEventListener('change', (event) => changePaTrainingSymbol(event.target.value));
+        $('#paTrainingSymbolSearch')?.addEventListener('change', (event) => changePaTrainingSymbol(event.target.value));
+        $('#paTrainingSymbolSearch')?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                changePaTrainingSymbol(event.target.value);
+            }
         });
         $('#paTrainingTimeframeSelect')?.addEventListener('change', (event) => {
             state.paTrainingTimeframe = event.target.value || 'H4';

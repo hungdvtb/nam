@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20260701-s49">
+    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-fit2">
 </head>
 <body>
     <div class="app-shell">
@@ -1763,7 +1763,11 @@
                         </div>
                         <label class="field pa-compact-field">
                             <span>Cặp</span>
-                            <select id="paTrainingSymbolSelect"></select>
+                            <div class="pa-symbol-search-wrap">
+                                <input id="paTrainingSymbolSearch" type="search" list="paTrainingSymbolList" autocomplete="off" placeholder="Tìm cặp..." aria-label="Tìm cặp tiền">
+                                <datalist id="paTrainingSymbolList"></datalist>
+                                <select id="paTrainingSymbolSelect" aria-label="Cặp tiền đang chọn" hidden></select>
+                            </div>
                         </label>
                         <label class="field pa-compact-field is-timeframe">
                             <span>Khung chính</span>
@@ -1941,7 +1945,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261011-free-pan"></script>
+    <script src="assets/app.js?v=20261011-pa-search2"></script>
 </body>
 </html>
 
