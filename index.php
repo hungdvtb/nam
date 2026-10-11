@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-contained">
+    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-contained2">
 </head>
 <body>
     <div class="app-shell">
