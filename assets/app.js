@@ -2352,6 +2352,30 @@
         if (moreToggle) moreToggle.classList.toggle('is-active', hiddenActive);
     }
 
+    function positionChartTimeframeMenu() {
+        const wrapper = $('#chartTimeframeMore');
+        const toggle = $('#chartTimeframeMoreToggle');
+        const menu = $('#chartTimeframeMenu');
+        if (!wrapper || !toggle || !menu || !wrapper.classList.contains('is-open')) return;
+        const rect = toggle.getBoundingClientRect();
+        const menuWidth = Math.max(280, menu.offsetWidth || 280);
+        const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - menuWidth - 8));
+        const top = Math.min(rect.bottom + 6, Math.max(8, window.innerHeight - 54));
+        menu.style.setProperty('--chart-timeframe-menu-left', `${left}px`);
+        menu.style.setProperty('--chart-timeframe-menu-top', `${top}px`);
+    }
+
+    function setChartTimeframeMenuOpen(open) {
+        const wrapper = $('#chartTimeframeMore');
+        const toggle = $('#chartTimeframeMoreToggle');
+        const menu = $('#chartTimeframeMenu');
+        if (!wrapper || !toggle || !menu) return;
+        wrapper.classList.toggle('is-open', !!open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        menu.hidden = !open;
+        if (open) requestAnimationFrame(positionChartTimeframeMenu);
+    }
+
     function findMarketFile(symbol, timeframe) {
         const wantedSymbol = normalizeSymbolKey(symbol);
         const wantedTimeframe = String(timeframe || '').toUpperCase();
@@ -11160,10 +11184,26 @@
         });
         $('#chartAddCompareBtn')?.addEventListener('click', () => addCompareSymbol().catch((e) => showToast(e.message)));
         $('#chartClearCompareBtn')?.addEventListener('click', clearCompareSymbols);
+        $('#chartTimeframeMoreToggle')?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const wrapper = $('#chartTimeframeMore');
+            setChartTimeframeMenuOpen(!wrapper?.classList.contains('is-open'));
+        });
+        document.addEventListener('click', (event) => {
+            const wrapper = $('#chartTimeframeMore');
+            if (wrapper?.classList.contains('is-open') && !wrapper.contains(event.target)) {
+                setChartTimeframeMenuOpen(false);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') setChartTimeframeMenuOpen(false);
+        });
+        window.addEventListener('resize', positionChartTimeframeMenu);
+        document.addEventListener('scroll', () => setChartTimeframeMenuOpen(false), true);
         $$('[data-chart-timeframe]').forEach((button) => {
             button.addEventListener('click', () => {
-                const menu = button.closest('.chart-timeframe-more');
-                if (menu) menu.open = false;
+                setChartTimeframeMenuOpen(false);
                 changeChartTimeframe(button.dataset.chartTimeframe).catch((e) => showToast(e.message));
             });
         });

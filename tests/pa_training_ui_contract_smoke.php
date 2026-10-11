@@ -33,6 +33,8 @@ $assertContains($index, 'pa-coach-workspace', 'page must use chart plus AI coach
 $assertContains($index, 'pa-coach-toolbar', 'page must use compact one-line PA toolbar');
 $assertContains($index, 'paTrainingChatSendBtn', 'page must include PA chart chat send button');
 $assertContains($index, 'pa-ai-action-row', 'page must compact AI coach actions into one row');
+$assertContains($index, 'chartTimeframeMenu', 'chart timeframe more menu must be a controlled dropdown');
+$assertContains($index, 'aria-expanded="false" aria-controls="chartTimeframeMenu"', 'timeframe dropdown button must expose open state');
 $assertContains($index, 'data-pa-action-help', 'AI coach quick-action buttons must explain themselves with popup notes');
 $assertContains($index, 'Đúng: chọn kết luận tạm', 'AI coach quick-action help must explain the Đúng button as a temporary session decision');
 $assertContains($index, 'M15: soi setup vào lệnh', 'AI coach quick-action help must explain the M15 button');
@@ -82,6 +84,8 @@ $assertContains($app, 'function savePaTrainingCurrentSession', 'frontend must sa
 $assertContains($app, 'function openPaTrainingSymbolFromAi', 'frontend must let AI chat open a requested symbol/timeframe');
 $assertContains($app, 'function paTrainingActionsWithLocalFallback', 'frontend must infer simple open-symbol commands when the API response has no action');
 $assertContains($app, 'function inferPaTrainingOpenSymbolAction', 'frontend must parse commands like mở GBPUSD from the chat box');
+$assertContains($app, 'function setChartTimeframeMenuOpen', 'frontend must open and close the hidden timeframe dropdown explicitly');
+$assertContains($app, 'function positionChartTimeframeMenu', 'frontend must position the timeframe dropdown outside clipped toolbar overflow');
 $assertContains($app, "action.type === 'open_symbol_chart'", 'frontend must execute AI symbol chart actions');
 $assertContains($app, "action.type === 'save_current_session'", 'frontend must execute AI save-session commands');
 $assertContains($app, "action.type === 'load_trade_cases'", 'frontend must execute AI load-case commands');

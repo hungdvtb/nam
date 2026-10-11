@@ -1371,16 +1371,16 @@
                             <div class="chart-timeframe-controls" aria-label="Khung thời gian">
                                 <button class="chart-control chart-timeframe-main is-active" data-chart-timeframe="H4" type="button">H4</button>
                                 <button class="chart-control chart-timeframe-main" data-chart-timeframe="M15" type="button">M15</button>
-                                <details class="chart-timeframe-more" id="chartTimeframeMore">
-                                    <summary class="chart-control" id="chartTimeframeMoreToggle" title="Mở các khung thời gian khác">Khác <span aria-hidden="true">⌄</span></summary>
-                                    <div class="chart-timeframe-menu" aria-label="Khung thời gian khác">
+                                <div class="chart-timeframe-more" id="chartTimeframeMore">
+                                    <button class="chart-control" id="chartTimeframeMoreToggle" type="button" title="Mở các khung thời gian khác" aria-expanded="false" aria-controls="chartTimeframeMenu">Khác <span aria-hidden="true">⌄</span></button>
+                                    <div class="chart-timeframe-menu" id="chartTimeframeMenu" aria-label="Khung thời gian khác" hidden>
                                         <button class="chart-control" data-chart-timeframe="M1" type="button">M1</button>
                                         <button class="chart-control" data-chart-timeframe="M5" type="button">M5</button>
                                         <button class="chart-control" data-chart-timeframe="M30" type="button">M30</button>
                                         <button class="chart-control" data-chart-timeframe="H1" type="button">H1</button>
                                         <button class="chart-control" data-chart-timeframe="D1" type="button">D1</button>
                                     </div>
-                                </details>
+                                </div>
                             </div>
                             <div class="chart-view-controls" aria-label="Điều khiển biểu đồ">
                                 <button class="chart-control" id="chartResetBtn" type="button">Đặt lại</button>
@@ -1941,7 +1941,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261011-ai-symbol-action2"></script>
+    <script src="assets/app.js?v=20261011-timeframe-menu"></script>
 </body>
 </html>
 
