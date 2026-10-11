@@ -17,6 +17,8 @@ assertContains('Nến: #${escapeHtml(number(candleNumber))}', $app, 'chart toolt
 assertContains('id="chartJumpStartBtn"', $index, 'chart toolbar should include jump-to-start button');
 assertContains('id="chartJumpEndBtn"', $index, 'chart toolbar should include jump-to-end button');
 assertContains('function jumpChartToBoundary', $app, 'chart should jump quickly to first or latest candles');
+assertContains('function chartFutureOffsetLimit', $app, 'chart should allow panning into empty future space after the latest candle');
+assertContains('barsFirstIndex', $app, 'chart rendering should keep actual candle indexes separate from virtual blank-space indexes');
 assertContains('function drawAggregatedCandles', $app, 'chart should use aggregated candle rendering when zoomed far out');
 assertContains('function chartSeriesSampleStep', $app, 'chart indicators should sample points when zoomed far out');
 assertContains('.map((run) => serverRunToChartRun(run, data))', $app, 'server backtest runs should be normalized with active chart data');

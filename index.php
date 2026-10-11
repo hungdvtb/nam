@@ -1941,7 +1941,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261011-timeframe-menu"></script>
+    <script src="assets/app.js?v=20261011-free-pan"></script>
 </body>
 </html>
 

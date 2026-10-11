@@ -9311,18 +9311,14 @@
         }
 
         const visibleCount = Math.min(state.chartView.barsOnScreen, allBars.length);
-        const virtualLastExclusive = clamp(
-            allBars.length - state.chartView.rightOffset,
-            visibleCount,
-            allBars.length + Math.max(0, visibleCount - minBars)
-        );
-        const first = clamp(
-            Math.round(virtualLastExclusive - visibleCount),
-            0,
-            Math.max(0, allBars.length - minBars)
-        );
-        const lastExclusive = Math.min(allBars.length, Math.max(first + minBars, Math.round(virtualLastExclusive)));
-        const bars = allBars.slice(first, lastExclusive);
+        const virtualLastExclusive = Math.round(allBars.length - state.chartView.rightOffset);
+        const first = Math.round(virtualLastExclusive - visibleCount);
+        const lastExclusive = first + visibleCount;
+        const barsFirstIndex = clamp(first, 0, allBars.length);
+        const barsLastExclusive = clamp(lastExclusive, 0, allBars.length);
+        const bars = barsLastExclusive > barsFirstIndex ? allBars.slice(barsFirstIndex, barsLastExclusive) : [];
+        const fallbackPriceBars = allBars.slice(Math.max(0, allBars.length - Math.max(1, minBars)), allBars.length);
+        const priceBars = bars.length ? bars : fallbackPriceBars;
 
         const plot = {
             left: 12,
@@ -9350,7 +9346,7 @@
             width: width - priceArea.right,
         };
 
-        const prices = bars.flatMap((bar) => [Number(bar.high), Number(bar.low)]).filter(Number.isFinite);
+        const prices = priceBars.flatMap((bar) => [Number(bar.high), Number(bar.low)]).filter(Number.isFinite);
         const teachingCase = state.activeTab === 'pa-training' ? paTrainingSelectedTeachingCase() : null;
         if (teachingCase && sameSymbol(teachingCase.symbol, data.symbol)) {
             [teachingCase.entryPrice, teachingCase.initialStop, teachingCase.targetPrice, teachingCase.exitPrice, teachingCase.zoneLow, teachingCase.zoneHigh]
@@ -9358,10 +9354,11 @@
                 .filter(Number.isFinite)
                 .forEach((price) => prices.push(price));
         }
+        if (!prices.length) prices.push(1);
         const minPrice = Math.min(...prices);
         const maxPrice = Math.max(...prices);
         const scaleMode = state.chartView.scaleMode || 'auto';
-        const scaleBase = Number(bars[0]?.close) || minPrice || 1;
+        const scaleBase = Number(priceBars[0]?.close) || minPrice || 1;
         const toScaleValue = (price) => {
             const value = Number(price);
             if (scaleMode === 'log') return Math.log(Math.max(0.0000001, value));
@@ -9398,6 +9395,8 @@
             bars,
             first,
             lastExclusive,
+            barsFirstIndex,
+            barsLastExclusive,
             visibleCount,
             plot,
             priceArea,
@@ -9466,13 +9465,13 @@
     }
 
     function drawMarketLine(ctx, layout, fillArea = false) {
-        const { bars, first, x, y, priceArea } = layout;
+        const { bars, barsFirstIndex, x, y, priceArea } = layout;
         const cutoff = replayCutoffIndex(layout.data);
         ctx.save();
         ctx.beginPath();
         let started = false;
         bars.forEach((bar, i) => {
-            const index = first + i;
+            const index = barsFirstIndex + i;
             if (index > cutoff) return;
             const close = Number(bar.close);
             if (!Number.isFinite(close)) {
@@ -9489,8 +9488,8 @@
             }
         });
         if (fillArea && started) {
-            const lastVisible = Math.min(layout.lastExclusive - 1, cutoff);
-            const firstVisible = Math.max(layout.first, Math.ceil(layout.first));
+            const lastVisible = Math.min(layout.barsLastExclusive - 1, cutoff);
+            const firstVisible = Math.max(layout.barsFirstIndex, Math.ceil(layout.barsFirstIndex));
             ctx.lineTo(layout.x(lastVisible), priceArea.bottom);
             ctx.lineTo(layout.x(firstVisible), priceArea.bottom);
             ctx.closePath();
@@ -9507,7 +9506,7 @@
     }
 
     function drawMarketBars(ctx, layout) {
-        const { bars, first, x, y, barStep } = layout;
+        const { bars, barsFirstIndex, x, y, barStep } = layout;
         if (shouldDrawAggregatedCandles(layout, bars)) {
             drawAggregatedCandles(ctx, layout, bars);
             return;
@@ -9516,7 +9515,7 @@
         const cutoff = replayCutoffIndex(layout.data);
         ctx.save();
         bars.forEach((bar, i) => {
-            const index = first + i;
+            const index = barsFirstIndex + i;
             if (index > cutoff) return;
             const open = Number(bar.open);
             const high = Number(bar.high);
@@ -9553,7 +9552,7 @@
             current = null;
         };
         bars.forEach((bar, i) => {
-            const index = layout.first + i;
+            const index = layout.barsFirstIndex + i;
             if (index > cutoff) return;
             const open = Number(bar.open);
             const high = Number(bar.high);
@@ -9595,7 +9594,7 @@
     }
 
     function drawMarketCandles(ctx, layout, customBars = null) {
-        const { first, x, y, barStep } = layout;
+        const { barsFirstIndex, x, y, barStep } = layout;
         const bars = customBars || layout.bars;
         if (shouldDrawAggregatedCandles(layout, bars)) {
             drawAggregatedCandles(ctx, layout, bars);
@@ -9604,12 +9603,13 @@
         const candleW = clamp(barStep * 0.58, 2, 14);
         const cutoff = replayCutoffIndex(layout.data);
         bars.forEach((bar, i) => {
-            if (first + i > cutoff) return;
+            const index = barsFirstIndex + i;
+            if (index > cutoff) return;
             const open = Number(bar.open);
             const high = Number(bar.high);
             const low = Number(bar.low);
             const close = Number(bar.close);
-            const xx = x(first + i);
+            const xx = x(index);
             const up = close >= open;
             ctx.strokeStyle = up ? '#089981' : '#f23645';
             ctx.fillStyle = up ? '#089981' : '#f23645';
@@ -9662,7 +9662,7 @@
         const visible = bricks.slice(-layout.bars.length);
         const w = clamp(layout.barStep * 0.75, 3, 16);
         visible.forEach((brick, i) => {
-            const index = layout.first + i;
+            const index = layout.barsFirstIndex + i;
             const xx = layout.x(index);
             const y1 = layout.y(brick.open);
             const y2 = layout.y(brick.close);
@@ -9672,17 +9672,18 @@
     }
 
     function drawMarketVolume(ctx, layout) {
-        const { bars, first, x, volumeArea, barStep } = layout;
+        const { bars, barsFirstIndex, x, volumeArea, barStep } = layout;
         const maxVol = Math.max(1, ...bars.map((bar) => Number(bar.tick_volume || bar.real_volume || 0)));
         const volW = clamp(barStep * 0.55, 2, 12);
         const cutoff = replayCutoffIndex(layout.data);
         bars.forEach((bar, i) => {
-            if (first + i > cutoff) return;
+            const index = barsFirstIndex + i;
+            if (index > cutoff) return;
             const open = Number(bar.open);
             const close = Number(bar.close);
             const volume = Number(bar.tick_volume || bar.real_volume || 0);
             const h = (volume / maxVol) * volumeArea.height;
-            const xx = x(first + i);
+            const xx = x(index);
             ctx.fillStyle = close >= open ? 'rgba(8,153,129,0.35)' : 'rgba(242,54,69,0.35)';
             ctx.fillRect(xx - volW / 2, volumeArea.bottom - h, volW, h);
         });
@@ -9734,14 +9735,15 @@
         const symbols = state.chartView.compareSymbols || [];
         if (!symbols.length) return;
         const baseBars = layout.allBars || [];
-        const baseStart = Number(baseBars[layout.first]?.close);
+        const baseIndex = clamp(layout.barsFirstIndex, 0, Math.max(0, baseBars.length - 1));
+        const baseStart = Number(baseBars[baseIndex]?.close);
         if (!Number.isFinite(baseStart) || baseStart === 0) return;
         const colors = ['#7c3aed', '#0f766e', '#b36b00'];
         symbols.forEach((symbol, symbolIndex) => {
             const data = state.chartView.compareData[symbol];
             const bars = data?.bars || [];
             if (!bars.length) return;
-            const compareStart = Number(bars[Math.min(layout.first, bars.length - 1)]?.close);
+            const compareStart = Number(bars[Math.min(baseIndex, bars.length - 1)]?.close);
             if (!Number.isFinite(compareStart) || compareStart === 0) return;
             ctx.save();
             ctx.strokeStyle = colors[symbolIndex % colors.length];
@@ -9750,6 +9752,10 @@
             let started = false;
             const sampleStep = chartSeriesSampleStep(layout);
             for (let index = layout.first; index < layout.lastExclusive; index += sampleStep) {
+                if (index < 0 || index >= bars.length || index >= baseBars.length) {
+                    started = false;
+                    continue;
+                }
                 const bar = bars[Math.min(index, bars.length - 1)];
                 const close = Number(bar?.close);
                 if (!Number.isFinite(close)) continue;
@@ -10199,7 +10205,7 @@
     function drawVolumeMa(ctx, layout, analytics) {
         const area = layout.volumeArea;
         const volumes = layout.bars.map((bar) => Number(bar.tick_volume || bar.real_volume || 0));
-        const maxVol = Math.max(1, ...volumes, ...analytics.indicators.volumeMa.slice(layout.first, layout.lastExclusive).filter(Number.isFinite));
+        const maxVol = Math.max(1, ...volumes, ...analytics.indicators.volumeMa.slice(layout.barsFirstIndex, layout.barsLastExclusive).filter(Number.isFinite));
         drawSeriesByIndex(ctx, layout, analytics.indicators.volumeMa, area, 0, maxVol, '#64748b', 1.2, [4, 4]);
         ctx.save();
         ctx.fillStyle = '#65717f';
@@ -10368,7 +10374,7 @@
             const label = layout.scaleMode === 'percent' ? `${formatSigned(scaled, 2)}%` : formatPrice(price, symbol);
             ctx.fillText(label, axisArea.left + 8, yy + 4);
         }
-        const last = layout.allBars[layout.lastExclusive - 1];
+        const last = layout.allBars[Math.min(layout.allBars.length - 1, layout.barsLastExclusive - 1)] || layout.allBars[layout.allBars.length - 1];
         if (last) {
             const close = Number(last.close);
             const yy = layout.y(close);
@@ -10381,7 +10387,7 @@
     }
 
     function drawMarketFooter(ctx, layout, data) {
-        const { priceArea, bars, first } = layout;
+        const { priceArea, bars, barsFirstIndex } = layout;
         ctx.fillStyle = bodyIsDark() ? '#edf2f7' : '#17202a';
         ctx.font = '600 13px Segoe UI, Arial';
         ctx.fillText(`${data.symbol} · ${data.timeframe}`, priceArea.left + 8, 18);
@@ -10390,7 +10396,7 @@
         const markerEvery = Math.max(1, Math.floor(bars.length / 6));
         bars.forEach((bar, i) => {
             if (i % markerEvery !== 0 && i !== bars.length - 1) return;
-            const xx = layout.x(first + i);
+            const xx = layout.x(barsFirstIndex + i);
             const label = formatChartTime(bar.time_iso || bar.time);
             ctx.fillText(label, xx - 28, layout.height - 16);
         });
@@ -10432,8 +10438,8 @@
             ctx.setLineDash([5, 5]);
         }
 
-        const barIndex = clamp(Math.round(layout.barIndexAtX(xx)), 0, Math.max(0, layout.allBars.length - 1));
-        const bar = layout.allBars[barIndex];
+        const barIndex = Math.round(layout.barIndexAtX(xx));
+        const bar = barIndex >= 0 && barIndex < layout.allBars.length ? layout.allBars[barIndex] : null;
         const timeLabel = formatChartTime(bar?.time_iso || bar?.time);
         if (timeLabel) {
             ctx.setLineDash([]);
@@ -11056,10 +11062,17 @@
 
     function chartRightOffsetLimits(totalBars, barsOnScreen) {
         const minBars = Math.min(12, totalBars);
+        const futureBars = chartFutureOffsetLimit(totalBars, barsOnScreen || minBars);
         return {
-            min: -Math.max(0, Math.round(barsOnScreen || minBars) - minBars),
+            min: -futureBars,
             max: Math.max(0, totalBars - minBars),
         };
+    }
+
+    function chartFutureOffsetLimit(totalBars, barsOnScreen) {
+        if (!totalBars) return 0;
+        const span = Math.max(1, Math.round(barsOnScreen || 1));
+        return Math.min(10000, Math.max(500, span * 8, Math.min(totalBars, 10000)));
     }
 
     function chartDataKey(data) {
@@ -11783,7 +11796,11 @@
             hideChartTooltip();
             return;
         }
-        const index = clamp(Math.round(layout.barIndexAtX(point.x)), 0, Math.max(0, layout.allBars.length - 1));
+        const index = Math.round(layout.barIndexAtX(point.x));
+        if (index < 0 || index >= layout.allBars.length) {
+            hideChartTooltip();
+            return;
+        }
         const bar = layout.allBars[index];
         if (!bar) {
             hideChartTooltip();
@@ -12352,8 +12369,11 @@
     }
 
     function chartDomainPoint(point, layout, snap = false) {
+        const rawIndex = layout.barIndexAtX(point.x);
+        const minIndex = Math.min(0, Math.floor(layout.first));
+        const maxIndex = Math.max(0, layout.allBars.length - 1, Math.ceil(layout.lastExclusive - 1));
         let domainPoint = {
-            barIndex: clamp(layout.barIndexAtX(point.x), 0, Math.max(0, layout.allBars.length - 1)),
+            barIndex: clamp(rawIndex, minIndex, maxIndex),
             price: layout.priceAtY(point.y),
         };
         if (snap) domainPoint = snapDomainPoint(domainPoint, layout);
@@ -12362,7 +12382,8 @@
 
     function snapDomainPoint(domainPoint, layout) {
         if (state.chartView.magnetMode === 'off') return domainPoint;
-        const barIndex = clamp(Math.round(domainPoint.barIndex), 0, Math.max(0, layout.allBars.length - 1));
+        const barIndex = Math.round(domainPoint.barIndex);
+        if (barIndex < 0 || barIndex >= layout.allBars.length) return domainPoint;
         const bar = layout.allBars[barIndex];
         if (!bar) return domainPoint;
         const prices = [bar.open, bar.high, bar.low, bar.close]
@@ -12383,12 +12404,19 @@
 
     function enrichDomainPointTime(domainPoint, layout) {
         if (!domainPoint || !layout?.allBars?.length) return domainPoint;
-        const barIndex = clamp(Math.round(Number(domainPoint.barIndex || 0)), 0, Math.max(0, layout.allBars.length - 1));
+        const rawBarIndex = Number(domainPoint.barIndex || 0);
+        const barIndex = Math.round(rawBarIndex);
+        if (barIndex < 0 || barIndex >= layout.allBars.length) {
+            return {
+                ...domainPoint,
+                barIndex: rawBarIndex,
+            };
+        }
         const bar = layout.allBars[barIndex];
         const time = barTimeValue(bar);
         return {
             ...domainPoint,
-            barIndex: Number(domainPoint.barIndex),
+            barIndex: rawBarIndex,
             ...(Number.isFinite(time) ? { time, time_iso: bar?.time_iso || bar?.time || null, sourceTimeframe: layout.data?.timeframe || state.activeMarketData?.timeframe || '' } : {}),
         };
     }
@@ -14060,7 +14088,9 @@
         const target = $('#chartDataWindow');
         if (!target || !layout?.data) return;
         const point = state.chartView.crosshairPoint;
-        const index = point ? clamp(Math.round(layout.barIndexAtX(point.x)), 0, Math.max(0, layout.allBars.length - 1)) : layout.lastExclusive - 1;
+        const index = point
+            ? Math.round(layout.barIndexAtX(point.x))
+            : Math.min(layout.allBars.length - 1, layout.barsLastExclusive - 1);
         const bar = layout.allBars[index];
         if (!bar) {
             target.innerHTML = '<div class="side-empty">Chưa có dữ liệu.</div>';
