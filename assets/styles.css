@@ -6656,9 +6656,34 @@ body[data-active-tab="pa-training"] .floating-style-toolbar #drawingJumpM15Btn:h
 .market-chart-panel.is-pa-embedded [data-chart-tool="text"],
 .market-chart-panel.is-pa-embedded #chartDeleteSelectedBtn,
 .market-chart-panel.is-pa-embedded #chartClearDrawingsBtn {
-    min-width: 0;
+    flex: 0 0 auto;
     height: 36px;
     min-height: 36px;
     padding: 0 10px;
+    white-space: nowrap;
+}
+
+.market-chart-panel.is-pa-embedded [data-chart-zone] {
+    min-width: 96px;
+}
+
+.market-chart-panel.is-pa-embedded [data-chart-tool="long-position"],
+.market-chart-panel.is-pa-embedded [data-chart-tool="short-position"],
+.market-chart-panel.is-pa-embedded [data-chart-tool="ellipse"],
+.market-chart-panel.is-pa-embedded [data-chart-tool="text"] {
+    min-width: 44px;
+}
+
+.market-chart-panel.is-pa-embedded [data-chart-tool="ellipse"] {
+    min-width: 64px;
+}
+
+.market-chart-panel.is-pa-embedded #chartDeleteSelectedBtn {
+    min-width: 48px;
+}
+
+.market-chart-panel.is-pa-embedded #chartClearDrawingsBtn {
+    min-width: 36px;
+    padding: 0;
 }
 
