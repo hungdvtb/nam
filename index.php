@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-contained2">
+    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-tight">
 </head>
 <body>
     <div class="app-shell">
@@ -1945,7 +1945,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261011-pa-toolbar-contained"></script>
+    <script src="assets/app.js?v=20261011-pa-toolbar-tight"></script>
 </body>
 </html>
 

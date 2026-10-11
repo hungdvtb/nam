@@ -6687,3 +6687,165 @@ body[data-active-tab="pa-training"] .floating-style-toolbar #drawingJumpM15Btn:h
     padding: 0;
 }
 
+/* Final PA toolbar packing: no horizontal scroll, no dead vertical space */
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded {
+    display: flex;
+    flex-direction: column;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-topbar {
+    flex: 0 0 auto;
+    min-height: 0;
+    padding: 2px 6px;
+    align-items: flex-start;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls {
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: flex-start;
+    justify-content: flex-start;
+    gap: 4px;
+    overflow: visible;
+    white-space: normal;
+    line-height: 1;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-timeframe-controls,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-view-controls,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-replay-buttons,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-replay-speed {
+    display: inline-flex;
+    align-items: center;
+    align-content: center;
+    gap: 4px;
+    min-width: 0;
+    margin: 0;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-view-controls,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline {
+    flex-wrap: wrap;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-timeframe-controls {
+    flex: 0 1 auto;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-view-controls {
+    flex: 0 1 auto;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline {
+    flex: 1 1 230px;
+    max-width: none;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-control,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls select {
+    height: 36px;
+    min-height: 36px;
+    min-width: 36px;
+    box-sizing: border-box;
+    padding: 0 10px;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-timeframe-main {
+    min-width: 58px;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartTimeframeMoreToggle {
+    min-width: 64px;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartFitBtn,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartFitHorizontalBtn,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartFitVerticalBtn,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartThemeBtn,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartFullscreenBtn,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-jump-control,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline .chart-control {
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline strong {
+    flex: 0 0 auto;
+    min-width: 24px;
+    font-size: 11px;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplayPlayBtn {
+    width: 42px;
+    min-width: 42px;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplaySpeed {
+    flex: 0 0 58px;
+    width: 58px;
+    min-width: 58px;
+    height: 36px;
+    padding: 0 20px 0 8px;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline input[type="range"] {
+    flex: 0 1 78px;
+    width: 78px;
+    min-width: 52px;
+    max-width: 92px;
+    height: 20px;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-controls .pa-replay-inline #chartReplayLabel {
+    flex: 0 1 72px;
+    max-width: 72px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    line-height: 1;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .chart-workspace {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .drawing-toolbar {
+    min-height: 0;
+    height: auto;
+    padding: 3px 6px;
+    gap: 4px;
+    align-items: center;
+    align-content: flex-start;
+}
+
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded .drawing-tool,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded [data-chart-zone],
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded [data-chart-tool="long-position"],
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded [data-chart-tool="short-position"],
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded [data-chart-tool="ellipse"],
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded [data-chart-tool="text"],
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartDeleteSelectedBtn,
+body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartClearDrawingsBtn {
+    height: 34px;
+    min-height: 34px;
+}
+
