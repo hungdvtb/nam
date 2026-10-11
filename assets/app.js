@@ -11320,6 +11320,8 @@
             if (state.activeMarketData) drawMarketChart(state.activeMarketData);
         });
         $('#chartFitBtn')?.addEventListener('click', fitFullChart);
+        $('#chartFitHorizontalBtn')?.addEventListener('click', fitChartHorizontally);
+        $('#chartFitVerticalBtn')?.addEventListener('click', fitChartVertically);
         $('#chartJumpStartBtn')?.addEventListener('click', () => jumpChartToBoundary('start'));
         $('#chartJumpEndBtn')?.addEventListener('click', () => jumpChartToBoundary('end'));
         $('#chartScreenshotBtn')?.addEventListener('click', takeChartScreenshot);
@@ -14527,6 +14529,26 @@
         state.chartView.rightOffset = 0;
         state.chartView.priceScale = 1;
         state.chartView.priceOffset = 0;
+        drawMarketChart(state.activeMarketData);
+    }
+
+    function fitChartHorizontally() {
+        const bars = state.activeMarketData?.bars || [];
+        if (!bars.length) return;
+        state.chartView.barsOnScreen = bars.length;
+        state.chartView.rightOffset = 0;
+        state.chartView.draftDrawing = null;
+        hideChartQuickMenu();
+        drawMarketChart(state.activeMarketData);
+    }
+
+    function fitChartVertically() {
+        const bars = state.activeMarketData?.bars || [];
+        if (!bars.length) return;
+        state.chartView.priceScale = 1;
+        state.chartView.priceOffset = 0;
+        state.chartView.draftDrawing = null;
+        hideChartQuickMenu();
         drawMarketChart(state.activeMarketData);
     }
 

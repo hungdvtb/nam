@@ -16,7 +16,11 @@ assertContains('function chartIndexForBarsTime(bars, value, fallback = 0)', $app
 assertContains('Nến: #${escapeHtml(number(candleNumber))}', $app, 'chart tooltip should show candle sequence number within loaded candles');
 assertContains('id="chartJumpStartBtn"', $index, 'chart toolbar should include jump-to-start button');
 assertContains('id="chartJumpEndBtn"', $index, 'chart toolbar should include jump-to-end button');
+assertContains('id="chartFitHorizontalBtn"', $index, 'chart toolbar should include horizontal fit button');
+assertContains('id="chartFitVerticalBtn"', $index, 'chart toolbar should include vertical fit button');
 assertContains('function jumpChartToBoundary', $app, 'chart should jump quickly to first or latest candles');
+assertContains('function fitChartHorizontally', $app, 'chart should fit only the horizontal candle range');
+assertContains('function fitChartVertically', $app, 'chart should fit only the vertical price scale');
 assertContains('function chartFutureOffsetLimit', $app, 'chart should allow panning into empty future space after the latest candle');
 assertContains('barsFirstIndex', $app, 'chart rendering should keep actual candle indexes separate from virtual blank-space indexes');
 assertContains('function drawAggregatedCandles', $app, 'chart should use aggregated candle rendering when zoomed far out');

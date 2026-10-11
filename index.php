@@ -1384,7 +1384,9 @@
                             </div>
                             <div class="chart-view-controls" aria-label="Điều khiển biểu đồ">
                                 <button class="chart-control" id="chartResetBtn" type="button">Đặt lại</button>
-                                <button class="chart-control" id="chartFitBtn" type="button" title="Vừa khung">Vừa</button>
+                                <button class="chart-control" id="chartFitBtn" type="button" title="Căn vừa cả chiều ngang và chiều dọc">Vừa</button>
+                                <button class="chart-control" id="chartFitHorizontalBtn" type="button" title="Căn biểu đồ vừa theo chiều ngang">Ngang</button>
+                                <button class="chart-control" id="chartFitVerticalBtn" type="button" title="Căn biểu đồ vừa theo chiều dọc">Dọc</button>
                                 <button class="chart-control chart-jump-control" id="chartJumpStartBtn" type="button" title="Về cây nến đầu tiên">|&lt;</button>
                                 <button class="chart-control chart-jump-control" id="chartJumpEndBtn" type="button" title="Về cây nến mới nhất">&gt;|</button>
                                 <button class="chart-control" id="chartScreenshotBtn" type="button">Chụp ảnh</button>
@@ -1945,7 +1947,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261011-pa-search2"></script>
+    <script src="assets/app.js?v=20261011-axis-fit"></script>
 </body>
 </html>
 
