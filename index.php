@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-balanced">
+    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-balanced2">
 </head>
 <body>
     <div class="app-shell">
@@ -1384,14 +1384,14 @@
                             </div>
                             <div class="chart-view-controls" aria-label="Điều khiển biểu đồ">
                                 <button class="chart-control" id="chartResetBtn" type="button">Đặt lại</button>
-                                <button class="chart-control" id="chartFitBtn" type="button" title="Căn vừa cả chiều ngang và chiều dọc">Vừa</button>
-                                <button class="chart-control" id="chartFitHorizontalBtn" type="button" title="Căn biểu đồ vừa theo chiều ngang">Ngang</button>
-                                <button class="chart-control" id="chartFitVerticalBtn" type="button" title="Căn biểu đồ vừa theo chiều dọc">Dọc</button>
+                                <button class="chart-control" id="chartFitBtn" type="button" title="Căn vừa cả chiều ngang và chiều dọc"><span class="chart-label-full">Vừa</span><span class="chart-label-compact" aria-hidden="true">⤢</span></button>
+                                <button class="chart-control" id="chartFitHorizontalBtn" type="button" title="Căn biểu đồ vừa theo chiều ngang"><span class="chart-label-full">Ngang</span><span class="chart-label-compact" aria-hidden="true">↔</span></button>
+                                <button class="chart-control" id="chartFitVerticalBtn" type="button" title="Căn biểu đồ vừa theo chiều dọc"><span class="chart-label-full">Dọc</span><span class="chart-label-compact" aria-hidden="true">↕</span></button>
                                 <button class="chart-control chart-jump-control" id="chartJumpStartBtn" type="button" title="Về cây nến đầu tiên">|&lt;</button>
                                 <button class="chart-control chart-jump-control" id="chartJumpEndBtn" type="button" title="Về cây nến mới nhất">&gt;|</button>
                                 <button class="chart-control" id="chartScreenshotBtn" type="button">Chụp ảnh</button>
-                                <button class="chart-control" id="chartThemeBtn" type="button" title="Bật/tắt nền tối">Tối</button>
-                                <button class="chart-control" id="chartFullscreenBtn" type="button" title="Phóng to biểu đồ">Full</button>
+                                <button class="chart-control" id="chartThemeBtn" type="button" title="Bật/tắt nền tối"><span class="chart-label-full">Tối</span><span class="chart-label-compact" aria-hidden="true">◐</span></button>
+                                <button class="chart-control" id="chartFullscreenBtn" type="button" title="Phóng to biểu đồ"><span class="chart-label-full">Full</span><span class="chart-label-compact" aria-hidden="true">⛶</span></button>
                             </div>
                         </div>
                     </div>
@@ -1947,7 +1947,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261011-axis-fit"></script>
+    <script src="assets/app.js?v=20261011-toolbar-balanced2"></script>
 </body>
 </html>
 

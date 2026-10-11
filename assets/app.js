@@ -11208,16 +11208,28 @@
             if (!paPanel || !panel) return;
             panel.classList.remove('is-fullscreen');
             paPanel.classList.toggle('is-pa-fullscreen');
-            if (button) button.textContent = paPanel.classList.contains('is-pa-fullscreen') ? 'Thu gọn' : 'Phóng to';
+            setChartButtonLabel(button, paPanel.classList.contains('is-pa-fullscreen') ? 'Thu gọn' : 'Phóng to');
         } else {
             $('#tab-pa-training')?.classList.remove('is-pa-fullscreen');
             if (!panel) return;
             panel.classList.toggle('is-fullscreen');
-            if (button) button.textContent = panel.classList.contains('is-fullscreen') ? 'Thu gọn' : 'Phóng to';
+            setChartButtonLabel(button, panel.classList.contains('is-fullscreen') ? 'Thu gọn' : 'Phóng to');
         }
         setTimeout(() => {
             if (state.activeMarketData) drawMarketChart(state.activeMarketData);
         }, 60);
+    }
+
+    function setChartButtonLabel(button, label, compactLabel = null) {
+        if (!button) return;
+        const full = button.querySelector('.chart-label-full');
+        const compact = button.querySelector('.chart-label-compact');
+        if (!full || !compact) {
+            button.textContent = label;
+            return;
+        }
+        full.textContent = label;
+        if (compactLabel) compact.textContent = compactLabel;
     }
 
     function bindChartEvents() {
@@ -13735,7 +13747,7 @@
         renderChartDrawingList();
         renderFavoriteToolbar();
         updateChartBottomStatus();
-        if (theme) theme.textContent = bodyIsDark() ? 'Nền sáng' : 'Nền tối';
+        setChartButtonLabel(theme, bodyIsDark() ? 'Nền sáng' : 'Nền tối');
     }
 
     async function saveChartDrawingAsPaZone(id) {
@@ -15280,10 +15292,10 @@
         const fullscreenButton = $('#chartFullscreenBtn');
         if (tab === 'pa-training') {
             chartPanel?.classList.remove('is-fullscreen');
-            if (fullscreenButton) fullscreenButton.textContent = paPanel?.classList.contains('is-pa-fullscreen') ? 'Thu gọn' : 'Phóng to';
+            setChartButtonLabel(fullscreenButton, paPanel?.classList.contains('is-pa-fullscreen') ? 'Thu gọn' : 'Phóng to');
         } else {
             paPanel?.classList.remove('is-pa-fullscreen');
-            if (fullscreenButton) fullscreenButton.textContent = chartPanel?.classList.contains('is-fullscreen') ? 'Thu gọn' : 'Phóng to';
+            setChartButtonLabel(fullscreenButton, chartPanel?.classList.contains('is-fullscreen') ? 'Thu gọn' : 'Phóng to');
         }
         mountSharedMarketChart(tab);
         $('#pageTitle').textContent = titles[tab][0];
