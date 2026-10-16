@@ -7536,7 +7536,8 @@
 
     function formatUsd(value) {
         const amount = Number(value || 0);
-        return `$${amount.toFixed(amount >= 1 ? 2 : 4)}`;
+        const decimals = amount >= 1 ? 2 : amount >= 0.01 ? 4 : 6;
+        return `$${amount.toFixed(decimals)}`;
     }
 
     function autoSyncOpenAiOfficialCosts() {

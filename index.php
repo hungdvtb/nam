@@ -1945,7 +1945,7 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
-    <script src="assets/app.js?v=20261016-openai-api-diagnostics"></script>
+    <script src="assets/app.js?v=20261016-openai-budget-usage"></script>
 </body>
 </html>
 

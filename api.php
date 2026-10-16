@@ -863,7 +863,7 @@ function openAiLocalSettingsStatus(): array
         'daily_budget_usd' => $budgetUsd,
         'max_completion_tokens' => (int)($provider['max_completion_tokens'] ?? 1200),
         'max_calls_per_day' => (int)($budget['max_calls_per_day'] ?? 100),
-        'budget' => ['spent_usd' => 0, 'budget_usd' => $budgetUsd, 'remaining_usd' => $budgetUsd, 'calls' => 0, 'max_calls' => (int)($budget['max_calls_per_day'] ?? 100), 'allowed' => true, 'price' => ['input_per_1m' => 0, 'output_per_1m' => 0]],
+        'budget' => (new OpenAIChatBudget($budget))->status($model),
         'official_costs' => [],
     ];
 }
