@@ -105,7 +105,11 @@ final class Mt5Bridge
             $command[] = $terminalPath;
         }
 
-        $shellCommand = 'start "" /B ' . implode(' ', array_map([$this, 'quote'], $command)) . ' > NUL 2>&1';
+        if (PHP_OS_FAMILY === 'Windows') {
+            $shellCommand = 'start "" /B ' . implode(' ', array_map([$this, 'quote'], $command)) . ' > NUL 2>&1';
+        } else {
+            $shellCommand = 'nohup ' . implode(' ', array_map('escapeshellarg', $command)) . ' >/dev/null 2>&1 &';
+        }
         $pipe = @popen($shellCommand, 'r');
         if (!is_resource($pipe)) {
             @unlink($progressPath);
@@ -315,6 +319,7 @@ final class Mt5Bridge
             }
         }
 
+        $candidates[] = ['python3'];
         $candidates[] = ['python'];
         $candidates[] = ['py', '-3'];
 
