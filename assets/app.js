@@ -7567,18 +7567,22 @@
 
     async function saveOpenAiSettings(event) {
         event.preventDefault();
+        const payload = {
+            enabled: $('#openAiEnabledInput')?.checked !== false,
+            apiKey: $('#openAiApiKeyInput')?.value.trim() || '',
+            model: $('#openAiModelInput')?.value.trim() || 'gpt-6-luna',
+            dailyBudgetUsd: Number($('#openAiDailyBudgetInput')?.value || 1),
+            maxCompletionTokens: Number($('#openAiMaxTokensInput')?.value || 1200),
+            maxCallsPerDay: Number($('#openAiMaxCallsInput')?.value || 0),
+        };
         state.openAiSettingsSaving = true;
         state.openAiSettingsError = '';
         renderOpenAiSettings();
         try {
-            const data = await api('openai_local_settings_save', {
-                enabled: $('#openAiEnabledInput')?.checked !== false,
-                apiKey: $('#openAiApiKeyInput')?.value.trim() || '',
-                model: $('#openAiModelInput')?.value.trim() || 'gpt-6-luna',
-                dailyBudgetUsd: Number($('#openAiDailyBudgetInput')?.value || 1),
-                maxCompletionTokens: Number($('#openAiMaxTokensInput')?.value || 1200),
-                maxCallsPerDay: Number($('#openAiMaxCallsInput')?.value || 0),
-            });
+            const data = await api('openai_local_settings_save', payload, { timeoutMs: 20000 });
+            if (payload.apiKey && data.api_key_configured !== true) {
+                throw new Error('Máy chủ đã phản hồi nhưng chưa xác nhận lưu được API key. Kiểm tra quyền ghi cấu hình trên hosting.');
+            }
             state.openAiSettings = data;
             const keyInput = $('#openAiApiKeyInput');
             if (keyInput) keyInput.value = '';
