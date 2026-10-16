@@ -1599,6 +1599,22 @@ input[type="checkbox"] {
     gap: 10px;
 }
 
+.mt5-progress {
+    display: grid;
+    gap: 6px;
+}
+
+.mt5-progress progress {
+    width: 100%;
+    height: 9px;
+    accent-color: #1976ed;
+}
+
+#mt5FetchBtn:disabled {
+    opacity: 0.65;
+    cursor: progress;
+}
+
 .status-ok,
 .status-error {
     display: grid;
@@ -1950,6 +1966,13 @@ input[type="checkbox"] {
     touch-action: none;
 }
 
+#paTradeLevelOverlay {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+    display: block;
+}
+
 .chart-tooltip {
     position: absolute;
     z-index: 5;
@@ -2015,6 +2038,18 @@ input[type="checkbox"] {
     background: #eef6ff;
     color: var(--blue-dark);
     outline: 0;
+}
+
+.chart-quick-menu .chart-quick-menu-priority {
+    font-weight: 700;
+    color: #1f57c8;
+}
+
+.chart-quick-menu .is-section-end {
+    margin-bottom: 5px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+    border-radius: 6px 6px 0 0;
 }
 
 .chart-quick-menu button:disabled {
@@ -5133,6 +5168,35 @@ body.is-dark .pa-zone-card.is-active {
     line-height: 1.35;
 }
 
+.pa-case-levels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin: 2px 0;
+}
+
+.pa-case-levels span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: auto;
+    max-width: none;
+    padding: 6px 8px;
+    border: 1px solid #dbe5f2;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, .75);
+    color: #475569;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.pa-case-levels strong {
+    color: #0f172a;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
 .pa-ai-side .pa-ai-chat-log {
     max-height: none;
     min-height: 220px;
@@ -5390,6 +5454,28 @@ body[data-active-tab="pa-training"] .topbar-actions .button {
     justify-content: flex-end;
     gap: 6px;
     min-width: max-content;
+}
+
+.pa-case-count-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 34px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.pa-case-count-control select {
+    width: 54px;
+    min-height: 34px;
+    padding: 5px 20px 5px 8px;
+}
+
+.pa-toolbar-case-count {
+    padding: 0 5px;
+    border: 1px solid #dbe3ee;
+    border-radius: 8px;
+    background: #fff;
 }
 
 .pa-compact-actions .button,
@@ -6847,5 +6933,515 @@ body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartDel
 body[data-active-tab="pa-training"] .market-chart-panel.is-pa-embedded #chartClearDrawingsBtn {
     height: 34px;
     min-height: 34px;
+}
+
+/* PA top controls: keep the setup header on one line */
+body[data-active-tab="pa-training"] .pa-coach-toolbar {
+    display: grid;
+    grid-template-columns: minmax(70px, 90px) minmax(150px, 1.05fr) minmax(112px, 0.48fr) minmax(180px, 1.1fr) max-content minmax(120px, 0.75fr) !important;
+    grid-auto-flow: column;
+    grid-auto-rows: minmax(34px, auto);
+    align-items: end;
+    gap: 8px !important;
+}
+
+body[data-active-tab="pa-training"] .pa-coach-title {
+    align-self: center;
+    min-width: 0;
+}
+
+body[data-active-tab="pa-training"] .pa-coach-title strong,
+body[data-active-tab="pa-training"] .pa-coach-title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-active-tab="pa-training"] .pa-coach-title strong {
+    font-size: 15px;
+}
+
+body[data-active-tab="pa-training"] .pa-compact-field {
+    min-width: 0;
+}
+
+body[data-active-tab="pa-training"] .pa-compact-field select,
+body[data-active-tab="pa-training"] .pa-symbol-search-wrap input {
+    height: 36px;
+    min-height: 36px;
+}
+
+body[data-active-tab="pa-training"] .pa-compact-actions {
+    min-width: max-content;
+    gap: 6px;
+}
+
+body[data-active-tab="pa-training"] .pa-compact-actions .button,
+body[data-active-tab="pa-training"] .pa-compact-segments .segment-button,
+body[data-active-tab="pa-training"] .pa-icon-button {
+    height: 36px;
+    min-height: 36px;
+    padding: 0 10px;
+}
+
+body[data-active-tab="pa-training"] .pa-case-count-control select {
+    height: 36px;
+    min-height: 36px;
+}
+
+body[data-active-tab="pa-training"] .pa-status-line.is-compact {
+    grid-column: auto !important;
+    align-self: end;
+    min-width: 0;
+    min-height: 36px;
+    height: 36px;
+    padding: 8px 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 1360px) {
+    body[data-active-tab="pa-training"] .pa-coach-toolbar {
+        grid-template-columns: minmax(58px, 76px) minmax(132px, 1fr) minmax(94px, 0.45fr) minmax(156px, 1fr) max-content minmax(48px, 0.45fr) !important;
+    }
+
+    body[data-active-tab="pa-training"] .pa-coach-title span {
+        display: none;
+    }
+
+    body[data-active-tab="pa-training"] .pa-compact-actions .button,
+    body[data-active-tab="pa-training"] .pa-compact-segments .segment-button {
+        padding-inline: 8px;
+    }
+}
+
+@media (max-width: 1120px) {
+    body[data-active-tab="pa-training"] .pa-status-line.is-compact {
+        display: none;
+    }
+}
+
+/* PA replay controls: one toggle button, draggable floating panel inside the chart */
+.pa-replay-toggle-control {
+    display: none !important;
+}
+
+body[data-active-tab="pa-training"] .pa-replay-toggle-control {
+    display: inline-flex !important;
+    margin-left: auto;
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
+    font-weight: 800;
+}
+
+body[data-active-tab="pa-training"] .pa-replay-toggle-control.is-active,
+body[data-active-tab="pa-training"] .pa-replay-toggle-control:hover {
+    border-color: #1d4ed8;
+    background: #1d4ed8;
+    color: #ffffff;
+}
+
+.pa-replay-floating-panel {
+    position: absolute;
+    left: 16px;
+    top: 16px;
+    z-index: 8;
+    width: min(520px, calc(100% - 32px));
+    overflow: hidden;
+    border: 1px solid #bfd0e5;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.22);
+}
+
+body:not([data-active-tab="pa-training"]) .pa-replay-floating-panel {
+    display: none !important;
+}
+
+.pa-replay-floating-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 5px 6px 5px 10px;
+    border-bottom: 1px solid #d7e2ef;
+    background: #f8fbff;
+    user-select: none;
+    touch-action: none;
+}
+
+.pa-replay-floating-panel.is-dragging .pa-replay-floating-head {
+    background: #eef4ff;
+}
+
+.pa-replay-grip {
+    color: #64748b;
+    font-weight: 900;
+    letter-spacing: -2px;
+}
+
+.pa-replay-floating-head strong {
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.pa-replay-floating-head small {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: #64748b;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pa-replay-floating-head .chart-control {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+}
+
+.pa-replay-floating-body {
+    padding: 8px;
+}
+
+.pa-replay-floating-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    flex-wrap: nowrap;
+}
+
+.pa-replay-floating-controls strong {
+    flex: 0 0 auto;
+    min-width: auto;
+    color: #475569;
+    font-size: 12px;
+}
+
+.pa-replay-floating-controls .chart-replay-buttons,
+.pa-replay-floating-controls .chart-replay-speed {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pa-replay-floating-controls .chart-control {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    border-color: #d7e2ef;
+    background: #ffffff;
+}
+
+.pa-replay-floating-controls #chartReplayPlayBtn {
+    width: 46px;
+    min-width: 46px;
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.pa-replay-floating-controls #chartReplaySpeed {
+    flex: 0 0 62px;
+    width: 62px;
+    min-width: 62px;
+    height: 34px;
+    padding: 0 20px 0 8px;
+    border: 1px solid #d7e2ef;
+    border-radius: 7px;
+    background: #ffffff;
+}
+
+.pa-replay-floating-controls input[type="range"] {
+    flex: 1 1 110px;
+    width: auto;
+    min-width: 90px;
+    height: 20px;
+    accent-color: #2563eb;
+}
+
+.pa-replay-floating-controls #chartReplayLabel {
+    flex: 0 1 120px;
+    min-width: 0;
+    overflow: hidden;
+    color: #64748b;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.is-dark .pa-replay-floating-panel {
+    border-color: #29364a;
+    background: rgba(17, 26, 36, 0.97);
+}
+
+body.is-dark .pa-replay-floating-head {
+    border-bottom-color: #29364a;
+    background: #142033;
+}
+
+body.is-dark .pa-replay-floating-controls .chart-control,
+body.is-dark .pa-replay-floating-controls #chartReplaySpeed {
+    border-color: #29364a;
+    background: #111a24;
+}
+
+/* PA replay panel: keep the controls readable as grouped, equal-width actions. */
+.pa-replay-floating-panel {
+    width: min(720px, calc(100% - 24px));
+    border-color: #c6d5e8;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 16px 36px rgba(30, 64, 110, 0.2);
+}
+
+.pa-replay-floating-head {
+    min-height: 42px;
+    gap: 9px;
+    padding: 6px 8px 6px 12px;
+    border-bottom-color: #dbe6f2;
+    background: linear-gradient(180deg, #f8fbff 0%, #eef5fd 100%);
+}
+
+.pa-replay-grip {
+    display: inline-grid;
+    width: 18px;
+    height: 24px;
+    place-items: center;
+    border: 1px solid #cbd9ea;
+    border-radius: 6px;
+    color: #5d78a0;
+    font-size: 13px;
+    letter-spacing: -3px;
+    line-height: 1;
+}
+
+.pa-replay-floating-head strong {
+    color: #16345f;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.pa-replay-floating-head small {
+    color: #6b7f99;
+    font-size: 11px;
+}
+
+.pa-replay-floating-head .chart-control {
+    border-color: #c6d5e8;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #365273;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.pa-replay-floating-body {
+    padding: 10px;
+    background: #f7faff;
+}
+
+.pa-replay-floating-controls {
+    display: grid;
+    grid-template-columns: auto auto minmax(210px, 1fr);
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+}
+
+.pa-replay-floating-controls .replay-segment {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 7px 8px;
+    border: 1px solid #d8e3f0;
+    border-radius: 9px;
+    background: #ffffff;
+}
+
+.pa-replay-floating-controls .replay-segment-label {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    color: #506682;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.pa-replay-floating-controls .replay-segment-label span {
+    display: inline-grid;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    border-radius: 5px;
+    background: #edf4ff;
+    color: #2563eb;
+    font-size: 11px;
+}
+
+.pa-replay-floating-controls .chart-replay-buttons,
+.pa-replay-floating-controls .chart-replay-speed {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.pa-replay-floating-controls .chart-control,
+.pa-replay-floating-controls #chartReplaySpeed {
+    box-sizing: border-box;
+    height: 34px;
+    min-height: 34px;
+    border: 1px solid #cad9eb;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #29496f;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.pa-replay-floating-controls .chart-replay-buttons .chart-control,
+.pa-replay-floating-controls .chart-replay-speed .chart-control {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+}
+
+.pa-replay-floating-controls #chartReplayPlayBtn {
+    width: 40px;
+    min-width: 40px;
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.24);
+}
+
+.pa-replay-floating-controls #chartReplaySpeed {
+    width: 58px;
+    min-width: 58px;
+    padding: 0 17px 0 7px;
+    font-size: 12px;
+}
+
+.pa-replay-floating-controls .replay-progress-segment {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+}
+
+.pa-replay-floating-controls .replay-progress-track {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) minmax(0, 132px);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pa-replay-floating-controls input[type="range"] {
+    width: 100%;
+    min-width: 90px;
+    height: 20px;
+    accent-color: #2563eb;
+}
+
+.pa-replay-floating-controls #chartReplayLabel {
+    min-width: 0;
+    overflow: hidden;
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pa-replay-floating-controls .chart-control:hover,
+.pa-replay-floating-controls #chartReplaySpeed:hover {
+    border-color: #8eacd2;
+    background: #f3f7fd;
+}
+
+.pa-replay-floating-controls #chartReplayPlayBtn:hover {
+    border-color: #1d4ed8;
+    background: #1d4ed8;
+}
+
+@media (max-width: 620px) {
+    .pa-replay-floating-panel {
+        width: min(460px, calc(100% - 16px));
+    }
+
+    .pa-replay-floating-controls {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .pa-replay-floating-controls .replay-progress-segment {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 410px) {
+    .pa-replay-floating-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .pa-replay-floating-controls .replay-progress-segment {
+        grid-column: auto;
+    }
+
+    .pa-replay-floating-controls .replay-segment {
+        justify-content: space-between;
+    }
+
+    .pa-replay-floating-controls .replay-progress-track {
+        grid-template-columns: minmax(75px, 1fr) minmax(0, 100px);
+    }
+}
+
+body.is-dark .pa-replay-floating-panel {
+    border-color: #31435e;
+    background: #111b2b;
+}
+
+body.is-dark .pa-replay-floating-head {
+    border-bottom-color: #2c3e59;
+    background: linear-gradient(180deg, #1a2a42 0%, #152238 100%);
+}
+
+body.is-dark .pa-replay-floating-head strong,
+body.is-dark .pa-replay-floating-controls .replay-segment-label {
+    color: #dbeafe;
+}
+
+body.is-dark .pa-replay-floating-body {
+    background: #101a2b;
+}
+
+body.is-dark .pa-replay-floating-controls .replay-segment,
+body.is-dark .pa-replay-floating-controls .chart-control,
+body.is-dark .pa-replay-floating-controls #chartReplaySpeed {
+    border-color: #30435f;
+    background: #17243a;
+    color: #dbeafe;
 }
 

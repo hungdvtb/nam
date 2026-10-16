@@ -1,7 +1,13 @@
 (function () {
+    let paWorkspaceUi = null;
+    let paCaseManager = null;
+    let paNearbyZoneCache = null;
+    let paNearbyZonesVisible = false;
+    let paWorkspacePersistTimer = null;
     const LEGACY_DEFAULT_MT5_BARS = 10000;
-    const DEFAULT_MT5_BARS = 1000000;
-    const MAX_MT5_BARS = 1000000;
+    const DEFAULT_MT5_BARS = 100000;
+    const MAX_MT5_BARS = 100000;
+    const MAX_MT5_FETCH_BARS = 1500000;
     const MT5_BASE_MINUTES = 15;
     const MT5_TIMEFRAME_MINUTES = {
         M1: 1,
@@ -18,6 +24,7 @@
     const CHART_SETTINGS_KEY = 'ai_trade_chart_settings_v1';
     const CHART_FAVORITES_KEY = 'ai_trade_chart_favorites_v1';
     const PA_CHAT_STORAGE_KEY = 'ai_trade_pa_chat_history_v1';
+    const PA_WORKSPACE_STORAGE_KEY = 'ai_trade_pa_workspace_v1';
     const CHART_HISTORY_LIMIT = 60;
     const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
     const UI_TRANSLATIONS = {
@@ -442,6 +449,7 @@
             drawings: loadChartDrawings(),
             drawingHistory: {},
             drawingsVisible: true,
+            teachingLevelMarkersVisible: true,
             drawingsLocked: false,
             stayInDrawingMode: false,
             magnetMode: 'strong',
@@ -461,7 +469,9 @@
             draftDrawing: null,
             selectedDrawingIds: [],
             selectionBox: null,
+            timeframeSelection: null,
             crosshairPoint: null,
+            candleInfoVisible: false,
             quickMenu: null,
             indicators: {
                 ema20: false,
@@ -492,6 +502,7 @@
                 enabled: false,
                 playing: false,
                 index: 0,
+                time: null,
                 speed: 1,
                 timer: null,
             },
@@ -607,6 +618,7 @@
         paTrainingCaseError: '',
         paTrainingSelectedZoneId: '',
         paTrainingMemory: { zone_reviews: [], setup_reviews: [], lessons: [] },
+        paTrainingWorkspace: {},
         paTrainingLoading: false,
         paTrainingError: '',
         paTrainingChatMessages: [],
@@ -1106,6 +1118,13 @@
 
     async function api(action, payload, requestOptions = {}) {
         const options = requestOptions.signal ? { signal: requestOptions.signal } : {};
+        let timeoutId = null;
+        let didTimeout = false;
+        if (!options.signal && Number(requestOptions.timeoutMs) > 0) {
+            const controller = new AbortController();
+            options.signal = controller.signal;
+            timeoutId = setTimeout(() => { didTimeout = true; controller.abort(); }, Number(requestOptions.timeoutMs));
+        }
         if (payload) {
             Object.assign(options, {
                 method: 'POST',
@@ -1113,8 +1132,21 @@
                 body: JSON.stringify(payload),
             });
         }
-        const response = await fetch(`api.php?action=${encodeURIComponent(action)}`, options);
-        const text = await response.text();
+        let response;
+        let text;
+        try {
+            response = await fetch(`api.php?action=${encodeURIComponent(action)}`, options);
+            text = await response.text();
+        } catch (error) {
+            if (didTimeout) throw new Error('Máy chủ web không phản hồi kịp. Key chưa được xác nhận là đã lưu; thử Tải lại trạng thái trước khi gửi lại.');
+            if (error instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(String(error?.message || ''))) {
+                const apiPath = new URL('api.php', document.baseURI).pathname;
+                throw new Error(`Không kết nối được API của website (${apiPath}). Máy chủ cần chạy PHP và truy cập được api.php; đây chưa phải lỗi API key.`);
+            }
+            throw error;
+        } finally {
+            if (timeoutId !== null) clearTimeout(timeoutId);
+        }
         let data = {};
         try {
             data = text ? JSON.parse(text) : {};
@@ -1131,6 +1163,7 @@
     async function bootstrap() {
         setStatus('Đang tải');
         const data = await api('bootstrap');
+        let rememberedPaWorkspace = null;
         state.accounts = data.accounts || [];
         state.strategy = data.strategy || {};
         state.strategySummary = data.strategy_summary || {};
@@ -1159,6 +1192,8 @@
         state.manualReviews = data.manual_reviews || [];
         state.zoneManualReviews = data.zone_manual_reviews || [];
         state.paTrainingMemory = normalizePaTrainingMemory(data.pa_training_memory);
+        state.paTrainingWorkspace = data.pa_training_workspace && typeof data.pa_training_workspace === 'object' ? data.pa_training_workspace : {};
+        rememberedPaWorkspace = restorePaWorkspaceSelection();
         state.calibratedPresets = data.calibrated_presets || [];
         state.selectedStrategyVersionId = state.selectedStrategyVersionId || (state.strategyVersions[0] && state.strategyVersions[0].id) || '';
         state.selectedAccountId = state.selectedAccountId || (state.accounts[0] && state.accounts[0].id);
@@ -1168,6 +1203,19 @@
         activateTabFromHash();
         setStatus('Sẵn sàng');
         autoSyncOpenAiOfficialCosts();
+        if (state.activeTab === 'pa-training' && rememberedPaWorkspace?.symbol) {
+            resumePaTrainingWorkspace(rememberedPaWorkspace).catch(() => {});
+        }
+    }
+
+    async function resumePaTrainingWorkspace(remembered = savedPaWorkspace()) {
+        const symbol = remembered.symbol || state.paTrainingSymbol;
+        const timeframe = remembered.timeframe || state.paTrainingTimeframe || 'H4';
+        if (!symbol || !findBestMarketFileForSymbol(symbol, timeframe)) return;
+        state.paTrainingSymbol = symbol;
+        state.paTrainingTimeframe = timeframe;
+        state.paTrainingSelectedCaseId = remembered.selectedCaseId || '';
+        await loadPaTrainingTradeCases({ silent: true, restoreProgress: true, chartTimeframe: remembered.chartTimeframe || 'H4' });
     }
 
     function renderAll() {
@@ -1990,6 +2038,104 @@
         }
     }
 
+    function readPaWorkspaceStore() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(PA_WORKSPACE_STORAGE_KEY) || '{}');
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function paWorkspaceKey(symbol = state.paTrainingSymbol, timeframe = state.paTrainingTimeframe) {
+        const safeSymbol = String(symbol || 'GLOBAL').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'GLOBAL';
+        return `${safeSymbol}_${String(timeframe || 'H4').toUpperCase()}`;
+    }
+
+    function savedPaWorkspace(symbol = state.paTrainingSymbol, timeframe = state.paTrainingTimeframe) {
+        const key = paWorkspaceKey(symbol, timeframe);
+        const candidates = [state.paTrainingWorkspace?.[key], readPaWorkspaceStore()[key]]
+            .filter((item) => item && typeof item === 'object');
+        // A stale browser copy can contain a reset/null cursor from an older
+        // build. Keep a valid server cursor when either source still has one.
+        const withReplay = candidates.filter((item) => item.replayIndex !== null && item.replayIndex !== undefined && Number.isFinite(Number(item.replayIndex)));
+        const pool = withReplay.length ? withReplay : candidates;
+        const item = pool.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];
+        return item && typeof item === 'object' ? item : {};
+    }
+
+    function persistPaWorkspace(patch = {}) {
+        try {
+            const symbol = patch.symbol || state.paTrainingSymbol;
+            const timeframe = patch.timeframe || state.paTrainingTimeframe || 'H4';
+            const store = readPaWorkspaceStore();
+            const key = paWorkspaceKey(symbol, timeframe);
+            const previous = { ...(store[key] || {}), ...savedPaWorkspace(symbol, timeframe) };
+            const hasReplayIndex = Object.prototype.hasOwnProperty.call(patch, 'replayIndex');
+            const hasReplayEnabled = Object.prototype.hasOwnProperty.call(patch, 'replayEnabled');
+            const requestedReplayIndex = hasReplayIndex ? patch.replayIndex : (previous.replayIndex ?? (state.chartView.replay.enabled ? state.chartView.replay.index : null));
+            const keepValidReplay = requestedReplayIndex === null && previous.replayIndex !== null && previous.replayIndex !== undefined && Number.isFinite(Number(previous.replayIndex));
+            const chartData = state.activeMarketData;
+            const chartMatches = chartData && sameSymbol(chartData.symbol, symbol);
+            const replayBar = chartMatches && state.chartView.replay.enabled
+                ? chartData.bars?.[clamp(Math.round(Number(state.chartView.replay.index) || 0), 0, Math.max(0, (chartData.bars?.length || 1) - 1))]
+                : null;
+            store[key] = {
+                ...previous,
+                symbol,
+                timeframe,
+                selectedCaseId: patch.selectedCaseId ?? state.paTrainingSelectedCaseId ?? '',
+                replayIndex: keepValidReplay ? previous.replayIndex : requestedReplayIndex,
+                replayEnabled: keepValidReplay ? previous.replayEnabled !== false : (hasReplayEnabled ? patch.replayEnabled : (previous.replayEnabled ?? state.chartView.replay.enabled)),
+                chartTimeframe: patch.chartTimeframe || (chartMatches ? chartData.timeframe : previous.chartTimeframe) || timeframe,
+                replayTime: state.chartView.replay.enabled && state.chartView.replay.time !== null && Number.isFinite(Number(state.chartView.replay.time))
+                    ? Number(state.chartView.replay.time)
+                    : (replayBar ? barTimeValue(replayBar) : (previous.replayTime ?? null)),
+                updatedAt: new Date().toISOString(),
+            };
+            localStorage.setItem(PA_WORKSPACE_STORAGE_KEY, JSON.stringify(store));
+            if (paWorkspacePersistTimer) clearTimeout(paWorkspacePersistTimer);
+            paWorkspacePersistTimer = setTimeout(() => {
+                api('pa_training_workspace_state', { state: readPaWorkspaceStore() }).catch(() => {});
+            }, 120);
+        } catch (error) {
+            // Workspace recovery is best effort when browser storage is unavailable.
+        }
+    }
+
+    function restorePaWorkspaceSelection() {
+        const store = { ...(state.paTrainingWorkspace || {}), ...readPaWorkspaceStore() };
+        const entries = Object.values(store).filter((item) => item && typeof item === 'object' && item.symbol);
+        const last = entries.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];
+        if (!last) return null;
+        state.paTrainingSymbol = String(last.symbol || state.paTrainingSymbol || '');
+        state.paTrainingTimeframe = String(last.timeframe || state.paTrainingTimeframe || 'H4').toUpperCase();
+        state.paTrainingSelectedCaseId = String(last.selectedCaseId || '');
+        return last;
+    }
+
+    function restorePaTrainingReplayProgress(data = state.activeMarketData, savedOverride = null) {
+        const bars = data?.bars || [];
+        if (!bars.length) return false;
+        const saved = savedOverride || savedPaWorkspace(data.symbol || state.paTrainingSymbol, data.timeframe || state.paTrainingTimeframe);
+        if (saved.replayIndex === null || saved.replayIndex === undefined || !Number.isFinite(Number(saved.replayIndex))) return false;
+        const savedTimeframe = String(saved.chartTimeframe || saved.timeframe || '').toUpperCase();
+        const currentTimeframe = String(data.timeframe || '').toUpperCase();
+        if (savedTimeframe !== currentTimeframe && (saved.replayTime === null || saved.replayTime === undefined || !Number.isFinite(Number(saved.replayTime)))) return false;
+        state.chartView.replay.enabled = saved.replayEnabled !== false;
+        state.chartView.replay.index = savedTimeframe === currentTimeframe
+            ? clamp(Math.round(Number(saved.replayIndex)), 0, bars.length - 1)
+            : chartIndexAtOrBeforeTime(bars, Number(saved.replayTime), 0);
+        const replayBar = bars[state.chartView.replay.index];
+        state.chartView.replay.time = saved.replayTime !== null && Number.isFinite(Number(saved.replayTime))
+            ? Number(saved.replayTime)
+            : (replayBar ? barTimeValue(replayBar) + timeframeSeconds(data.timeframe) - 1 : null);
+        centerChartOnIndex(state.chartView.replay.index);
+        renderReplayControls(data);
+        drawMarketChart(data);
+        return true;
+    }
+
     function saveMt5Settings(settings) {
         try {
             localStorage.setItem(
@@ -2236,7 +2382,7 @@
 
     function mt5BarsForTimeframe(timeframe, baseM15Bars) {
         const minutes = MT5_TIMEFRAME_MINUTES[timeframe] || MT5_BASE_MINUTES;
-        return clamp(Math.ceil((baseM15Bars * MT5_BASE_MINUTES) / minutes), 50, MAX_MT5_BARS);
+        return clamp(Math.ceil((baseM15Bars * MT5_BASE_MINUTES) / minutes), 50, MAX_MT5_FETCH_BARS);
     }
 
     function mt5BarsPlanText(barsByTimeframe) {
@@ -2251,8 +2397,8 @@
         const payload = readMt5FetchForm();
         const plan = mt5BarsPlanText(payload.bars_by_timeframe);
         hint.textContent = plan
-            ? `M15 là mốc chính. App sẽ yêu cầu: ${plan}.`
-            : 'M15 là mốc chính. Chọn khung thời gian để xem số nến sẽ yêu cầu.';
+            ? `M15 là mốc chính. App sẽ yêu cầu: ${plan}. MT5 trả dữ liệu mới thì sẽ ghi đè file cũ.`
+            : 'M15 là mốc chính, tối đa 100.000 nến. Chọn khung thời gian để xem số nến sẽ yêu cầu. Dữ liệu MT5 mới sẽ ghi đè file cũ.';
     }
 
     function persistMt5Form() {
@@ -2350,6 +2496,46 @@
         const hiddenActive = !!$('.chart-timeframe-menu [data-chart-timeframe].is-active');
         if (moreMenu) moreMenu.classList.toggle('has-active-timeframe', hiddenActive);
         if (moreToggle) moreToggle.classList.toggle('is-active', hiddenActive);
+        updateChartSelectionJumpButtons();
+    }
+
+    function updateChartSelectionJumpButtons() {
+        const selection = state.chartView.timeframeSelection;
+        const usable = !!selection && !!state.activeMarketData && selection.symbol === state.activeMarketData.symbol;
+        ['chartSelectionToM15Btn', 'chartSelectionToH1Btn'].forEach((id) => {
+            const button = $(`#${id}`);
+            if (button) button.disabled = !usable;
+        });
+    }
+
+    async function jumpToSelectedChartRange(timeframe) {
+        const selection = state.chartView.timeframeSelection;
+        const symbol = state.activeMarketData?.symbol;
+        if (!selection || !symbol || selection.symbol !== symbol) {
+            showToast('Hãy chọn vùng trên biểu đồ trước. Dùng công cụ Chọn rồi kéo qua vùng cần xem.');
+            return;
+        }
+        const file = findMarketFile(symbol, timeframe);
+        if (!file) {
+            showToast(`${symbol} ${timeframe} chưa có dữ liệu.`);
+            return;
+        }
+        await loadMarketData(file.file);
+        const bars = state.activeMarketData?.bars || [];
+        if (!bars.length) return;
+        const first = chartIndexForBarsTime(bars, selection.startTime, 0);
+        const last = chartIndexForBarsTime(bars, selection.endTime, first);
+        const low = Math.min(first, last);
+        const high = Math.max(first, last);
+        const selectedSpan = Math.max(1, high - low + 1);
+        const span = clamp(Math.max(12, Math.ceil(selectedSpan * 1.45)), Math.min(12, bars.length), bars.length);
+        const center = (low + high) / 2;
+        const left = clamp(Math.round(center - span / 2), 0, Math.max(0, bars.length - span));
+        const offsetLimits = chartRightOffsetLimits(bars.length, span);
+        state.chartView.barsOnScreen = span;
+        state.chartView.rightOffset = clamp(bars.length - left - span, offsetLimits.min, offsetLimits.max);
+        drawMarketChart(state.activeMarketData);
+        showToast(`Đã chuyển đến vùng đã chọn trên ${symbol} ${timeframe}`);
     }
 
     function positionChartTimeframeMenu() {
@@ -2459,10 +2645,45 @@
     }
 
     async function mt5Fetch() {
-        setMt5Status('Đang lấy dữ liệu từ MT5...');
         const payload = readMt5FetchForm();
         saveMt5Settings(payload);
-        const data = await api('mt5_fetch', payload);
+        const button = $('#mt5FetchBtn');
+        const startedAt = Date.now();
+        let data;
+        button.disabled = true;
+        try {
+            setMt5Status('<div class="mt5-progress"><strong>Đang khởi chạy lượt lấy dữ liệu MT5…</strong><span>Yêu cầu chạy nền; bạn có thể theo dõi tiến độ tại đây.</span></div>');
+            const started = await api('mt5_fetch', payload);
+            while (true) {
+                await new Promise((resolve) => window.setTimeout(resolve, 1800));
+                const status = await api('mt5_fetch_status', { job_id: started.job_id });
+                const progress = status.progress || {};
+                if (status.complete || progress.status === 'complete') {
+                    data = status;
+                    break;
+                }
+                const done = Number(progress.completed || 0);
+                const total = Number(progress.total || payload.symbols.length * payload.timeframes.length || 0);
+                const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                const remaining = done > 0 && total > done ? Math.ceil((elapsed / done) * (total - done)) : null;
+                const current = progress.current_symbol && progress.current_timeframe
+                    ? `Đang lấy ${escapeHtml(progress.current_symbol)} ${escapeHtml(progress.current_timeframe)}${progress.current_chunk ? ` · lô ${number(progress.current_chunk)}/${number(progress.chunk_total)}` : ''}`
+                    : escapeHtml(progress.message || 'Đang kết nối MT5 và chuẩn bị dữ liệu');
+                setMt5Status(`
+                    <div class="mt5-progress">
+                        <strong>MT5 đang chạy · ${number(done)} / ${number(total)} cặp-khung hoàn tất</strong>
+                        <progress max="${Math.max(1, total)}" value="${Math.min(done, total)}"></progress>
+                        <span>${current}</span>
+                        <span>Đã chạy ${mt5DurationLabel(elapsed)}${remaining !== null ? ` · còn khoảng ${mt5DurationLabel(remaining)}` : ''}. Dữ liệu được ghi dần vào file.</span>
+                    </div>
+                `);
+            }
+        } catch (error) {
+            setMt5Status(`<div class="status-error"><strong>Lượt lấy dữ liệu bị lỗi</strong><span>${escapeHtml(error.message || String(error))}</span></div>`);
+            throw error;
+        } finally {
+            button.disabled = false;
+        }
         const mt5 = data.mt5 || {};
         if (!data.ok) {
             setMt5Status(mt5ErrorHtml(mt5));
@@ -2478,7 +2699,11 @@
             <div class="status-ok">
                 <strong>Đã cập nhật ${number(written.length)} tệp dữ liệu</strong>
                 ${requestPlan ? `<span>Yêu cầu theo M15: ${escapeHtml(requestPlan)}</span>` : ''}
-                <span>${written.map((item) => `${item.symbol} ${item.timeframe}: ${number(item.bars)} nến`).join(' | ')}</span>
+                <span>${written.map((item) => {
+                    const fetchedBars = Number(item.fetched_bars ?? item.bars ?? 0);
+                    const kept = Boolean(item.kept_existing);
+                    return `${item.symbol} ${item.timeframe}: MT5 trả ${number(fetchedBars)} nến${kept ? `, đang lưu ${number(item.bars)}` : ''}`;
+                }).join(' | ')}</span>
                 ${
                     keptExisting.length
                         ? `<span>Đã giữ ${number(keptExisting.length)} tệp cũ vì dữ liệu đang lưu dài hơn dữ liệu MT5 vừa trả.</span>`
@@ -2497,6 +2722,13 @@
         }
     }
 
+    function mt5DurationLabel(seconds) {
+        const value = Math.max(0, Math.floor(Number(seconds) || 0));
+        const minutes = Math.floor(value / 60);
+        const rest = value % 60;
+        return minutes ? `${minutes} phút ${rest} giây` : `${rest} giây`;
+    }
+
     function requestedMt5Bars(item, payload) {
         return Number(payload.bars_by_timeframe?.[item.timeframe] || payload.bars || 0);
     }
@@ -2508,8 +2740,10 @@
         showToast('Đã tải lại danh sách dữ liệu');
     }
 
-    async function loadMarketData(file) {
-        const data = await api('market_data', { file });
+    async function loadMarketData(file, options = {}) {
+        const data = options.marketData
+            ? { market_data: options.marketData }
+            : await api('market_data', { file });
         state.activeMarketFile = file;
         state.activeMarketData = data.market_data;
         state.chartView.timeframe = state.activeMarketData?.timeframe || state.chartView.timeframe;
@@ -2677,6 +2911,7 @@
         renderPaTrainingChart();
         renderPaTrainingSetupGuide();
         renderPaTrainingRecentFeedback();
+        syncPaWorkspaceUi();
     }
 
     function renderPaTrainingStats() {
@@ -2689,7 +2924,7 @@
         const manualZones = (state.paTrainingZones || []).filter((zone) => zone.manual || zone.source === 'manual').length;
         const countBy = (decision) => zones.filter((item) => item.decision === decision).length;
         target.innerHTML = [
-            paTrainingStatCard('Ca chờ dạy', number(cases.length), 'App tự lọc từ vùng H4 và lần giá quay về vùng'),
+            paTrainingStatCard('Ca chờ dạy', number(cases.length), 'Lệnh M15 đã vào và chạm SL/TP từ vùng H4'),
             paTrainingStatCard('Ca đã chấm', number(setups.length), 'Vùng + setup + entry/SL/TP đã được m phản hồi'),
             paTrainingStatCard('Vùng đã chấm', number(zones.length), 'Mẫu vùng H4 bạn đã dạy'),
             paTrainingStatCard('Chọn để trade', number(countBy('trade_zone')), 'AI nên ưu tiên vùng kiểu này'),
@@ -2715,12 +2950,12 @@
         const status = $('#paTrainingStatus');
         if (status) {
             status.innerHTML = state.paTrainingLoading || state.paTrainingCaseLoading
-                ? 'Đang quét 10k nến để tạo hàng đợi ca dạy...'
+                ? 'Đang quét H4 và M15 để tìm lệnh đã khớp, chạm SL hoặc TP...'
                 : state.paTrainingError || state.paTrainingCaseError
                   ? `<span class="status-error"><strong>${escapeHtml(state.paTrainingError || state.paTrainingCaseError)}</strong></span>`
                   : hasCaseQueue
                     ? `${escapeHtml(state.paTrainingSymbol)} H4: ${number(cases.length)}/${number(state.paTrainingTradeCases.length)} ca theo bộ lọc. Bấm Tiếp hoặc chọn một ca để dạy AI.`
-                    : 'Chọn cặp tiền rồi bấm Tạo ca để app tự lọc tình huống từ 10k nến.';
+                    : 'Chọn cặp tiền rồi bấm Tạo ca để tìm lệnh M15 đã vào và có kết quả SL/TP.';
         }
 
         if (hasCaseQueue) {
@@ -2734,7 +2969,7 @@
                 state.paTrainingSelectedCaseId = firstOpen?.id || '';
                 state.paTrainingSelectedZoneId = firstOpen?.zoneId || firstOpen?.zone?.id || '';
             }
-            list.innerHTML = cases.map((item) => paTrainingCaseCard(item)).join('');
+            list.innerHTML = cases.map((item, index) => paTrainingCaseCard(item, index)).join('');
             $$('[data-pa-case-id]').forEach((button) => {
                 button.addEventListener('click', () => selectPaTrainingCaseById(button.dataset.paCaseId, { focus: true }));
             });
@@ -2743,7 +2978,7 @@
         }
 
         if (!zones.length) {
-            list.innerHTML = '<div class="notice">Chưa có ca dạy. Bấm Tạo ca để app lọc vùng H4 và các lần giá quay về vùng.</div>';
+            list.innerHTML = '<div class="notice">Chưa có lệnh M15 đã khớp và chạm SL/TP trong dữ liệu. Hãy kiểm tra dữ liệu H4/M15 hoặc chọn cặp khác.</div>';
             if (detail) detail.innerHTML = '';
             return;
         }
@@ -2796,6 +3031,36 @@
         return cases.find((item) => item.id === state.paTrainingSelectedCaseId) || paTrainingFilteredCases()[0] || null;
     }
 
+    function paTrainingCaseAnchorTime(item = paTrainingSelectedTeachingCase()) {
+        return item?.entryTime || item?.anchorTime || item?.zone?.originCandleTime || item?.zone?.firstTouchTime || '';
+    }
+
+    function paTrainingCaseFitsChartData(item, data = state.activeMarketData) {
+        if (!item || !data || !sameSymbol(item.symbol, data.symbol)) return false;
+        if (String(item.timeframe || '').toUpperCase() === String(data.timeframe || '').toUpperCase()) return true;
+        const anchor = timeToSeconds(paTrainingCaseAnchorTime(item));
+        const bars = data.bars || [];
+        if (!Number.isFinite(anchor) || !bars.length) return false;
+        const first = barTimeValue(bars[0]);
+        const last = barTimeValue(bars[bars.length - 1]);
+        return Number.isFinite(first) && Number.isFinite(last) && anchor >= Math.min(first, last) && anchor <= Math.max(first, last);
+    }
+
+    function updatePaTrainingTimeframeNotice(data = state.activeMarketData) {
+        const note = $('#paNearbyZonesNote');
+        const item = paTrainingSelectedTeachingCase();
+        if (!note || state.activeTab !== 'pa-training' || !data) return;
+        if (item && sameSymbol(item.symbol, data.symbol) && String(item.timeframe || '').toUpperCase() !== String(data.timeframe || '').toUpperCase() && !paTrainingCaseFitsChartData(item, data)) {
+            note.textContent = `Đang xem ${data.timeframe}: thời điểm của ca ${item.timeframe} nằm ngoài khoảng dữ liệu ${data.timeframe} đã tải. Đã ẩn vùng/entry của ca để giữ đúng tỷ lệ giá; tải thêm lịch sử ${data.timeframe} để xem cùng thời điểm.`;
+            note.classList.add('is-history-gap');
+        } else {
+            note.classList.remove('is-history-gap');
+            note.textContent = data.paAlignment?.baseline === 'M15'
+                ? `${data.timeframe} · đã căn theo khoảng dữ liệu M15`
+                : `${data.timeframe} · vùng TP theo ca đang chọn`;
+        }
+    }
+
     function paTrainingSelectedZone() {
         const selectedCase = paTrainingSelectedTeachingCase();
         if (selectedCase?.zone) return selectedCase.zone;
@@ -2807,6 +3072,7 @@
         if (!item) return;
         state.paTrainingSelectedCaseId = item.id;
         state.paTrainingSelectedZoneId = item.zoneId || item.zone?.id || '';
+        persistPaWorkspace({ selectedCaseId: item.id });
         state.chartView.selectedTradeId = null;
         renderPaTraining();
         if (options.focus !== false) {
@@ -2825,7 +3091,7 @@
             showToast('Không có ca nào trong bộ lọc hiện tại.');
             return;
         }
-        selectPaTrainingCaseById(firstOpen.id, { focus: true, timeframe: 'H4' });
+        selectPaTrainingCaseById(firstOpen.id, { focus: true, timeframe: 'M15' });
         showToast(`Bắt đầu ca dạy ${Math.max(1, cases.findIndex((item) => item.id === firstOpen.id) + 1)}/${cases.length}`);
     }
 
@@ -2839,7 +3105,7 @@
         focusPaTrainingTeachingCaseWindow(item);
     }
 
-    function focusPaTrainingTeachingCaseWindow(item = paTrainingSelectedTeachingCase()) {
+    function focusPaTrainingTeachingCaseWindow(item = paTrainingSelectedTeachingCase(), currentRegionOnly = false) {
         const bars = state.activeMarketData?.bars || [];
         if (!item || !bars.length) return;
         const indexFor = (time, fallback) => {
@@ -2858,12 +3124,17 @@
             }
             return Number.isFinite(Number(fallback)) ? Number(fallback) : 0;
         };
-        const origin = clamp(indexFor(item.zone?.originCandleTime || item.entryTime || item.anchorTime, item.zoneOriginIndex ?? item.zone?.originIndex), 0, bars.length - 1);
         const entry = clamp(indexFor(item.entryTime || item.anchorTime, item.entryIndex ?? item.anchorIndex), 0, bars.length - 1);
-        const exit = clamp(indexFor(item.exitTime || item.entryTime || item.anchorTime, item.exitIndex ?? entry), 0, bars.length - 1);
-        const left = Math.min(origin, entry, exit);
-        const right = Math.max(origin, entry, exit);
-        const span = clamp(Math.max(80, (right - left + 1) * 3), Math.min(12, bars.length), bars.length);
+        const exit = currentRegionOnly ? entry : clamp(indexFor(item.exitTime || item.entryTime || item.anchorTime, item.exitIndex ?? entry), 0, bars.length - 1);
+        // The H4 zone may have formed months before the M15 fill. Keep the
+        // viewport around the actual order and its exit, not the old origin.
+        const left = Math.min(entry, exit);
+        const right = Math.max(entry, exit);
+        const timeframe = String(state.activeMarketData?.timeframe || state.paTrainingChartTimeframe || 'H4').toUpperCase();
+        // Keep a similar amount of calendar context when switching timeframes.
+        // A fixed 80 bars is useful on H4 but leaves M15 far too zoomed in.
+        const contextBars = ({ M1: 7200, M5: 2880, M15: 960, M30: 480, H1: 240, H4: 80, D1: 40 })[timeframe] || 120;
+        const span = clamp(Math.max(contextBars, (right - left + 1) * 3), Math.min(12, bars.length), bars.length);
         const first = clamp(Math.round(left - span * 0.2), 0, Math.max(0, bars.length - span));
         const offsetLimits = chartRightOffsetLimits(bars.length, span);
         state.chartView.barsOnScreen = span;
@@ -2872,7 +3143,8 @@
         state.chartView.priceOffset = 0;
         stopChartReplay(false);
         state.chartView.replay.enabled = true;
-        state.chartView.replay.index = origin;
+        state.chartView.replay.index = item.resultStatus === 'closed' && item.exitTime ? exit : entry;
+        state.chartView.replay.time = barTimeValue(bars[state.chartView.replay.index]) + timeframeSeconds(timeframe) - 1;
         renderReplayControls(state.activeMarketData);
         drawMarketChart(state.activeMarketData);
     }
@@ -2906,6 +3178,7 @@
             bad_case: { label: label || 'Bỏ ca này', className: 'is-bad' },
             weak_case: { label: label || 'Ca yếu/cần sửa', className: 'is-weak' },
             session_note: { label: label || 'Lưu phiên trao đổi', className: 'is-neutral' },
+            adjusted_case: { label: label || 'Đã điều chỉnh setup', className: 'is-neutral' },
         };
         return map[decision] || { label: label || 'Chưa chọn kết luận', className: 'is-empty' };
     }
@@ -3023,6 +3296,7 @@
     }
 
     async function savePaTrainingCurrentSession(options = {}) {
+        if (state.paTrainingSessionSaving) return;
         const trade = paTrainingSelectedTrade();
         const zone = paTrainingSelectedZone();
         if (!trade) {
@@ -3031,7 +3305,7 @@
         }
         const key = paTrainingSessionKey(trade, zone);
         let draft = paTrainingSessionDraft(trade, zone);
-        if (!draft?.decision && options.allowNeutral) {
+        if (!draft?.decision) {
             draft = {
                 decision: options.decision || 'session_note',
                 label: options.label || 'Lưu phiên trao đổi',
@@ -3039,10 +3313,6 @@
                 updatedAt: new Date().toISOString(),
             };
             state.paTrainingSessionDrafts[key] = draft;
-        }
-        if (!draft?.decision) {
-            showToast(options.allowNeutral ? 'Chưa có kết luận tạm, app sẽ lưu phiên như ghi chú trao đổi.' : 'Chọn Đúng, Bỏ hoặc Sửa trước rồi hãy bấm Lưu phiên.');
-            return;
         }
         const input = $('#paTrainingChatInput');
         const finalNote = String(input?.value || '').trim();
@@ -3073,6 +3343,7 @@
         const snapshot = {
             zone: zone || trade.zone || null,
             trade: tradeSnapshot,
+            originalTrade: trade.originalTrade || tradeSnapshot,
             session,
         };
         state.paTrainingSessionSaving = true;
@@ -3087,15 +3358,17 @@
                 label: draft.label,
                 note,
                 snapshot,
+                reviewId: trade.savedReviewId || '',
+                expectedUpdatedAt: trade.savedReviewUpdatedAt || '',
             });
             state.paTrainingMemory = normalizePaTrainingMemory(data.pa_training_memory);
             const caseIndex = (state.paTrainingTradeCases || []).findIndex((item) => item.id === trade.id);
             if (caseIndex >= 0) {
-                state.paTrainingTradeCases[caseIndex] = { ...state.paTrainingTradeCases[caseIndex], review: data.review, caseStatus: 'reviewed' };
+                state.paTrainingTradeCases[caseIndex] = { ...state.paTrainingTradeCases[caseIndex], review: data.review, savedReviewId: data.review.id, savedReviewUpdatedAt: data.review.updatedAt || data.review.createdAt, caseStatus: 'reviewed' };
             }
             delete state.paTrainingSessionDrafts[key];
             if (input && finalNote) input.value = '';
-            showToast(`Đã lưu phiên: ${draft.label} | ${number(messages.length)} tin chat | ${number(chart.drawings?.length || 0)} hình vẽ`);
+            showToast('Đã lưu ca. Bấm biểu tượng Ca đã lưu cạnh AI Coach để xem, sửa hoặc xóa.');
             if (options.advance !== false) movePaTrainingTrade(1);
             else renderPaTraining();
         } catch (error) {
@@ -3111,9 +3384,12 @@
             id: trade.id || '',
             symbol: trade.symbol || state.activeMarketData?.symbol || state.paTrainingSymbol || '',
             timeframe: trade.timeframe || state.activeMarketData?.timeframe || state.paTrainingChartTimeframe || 'H4',
+            contextTimeframe: trade.contextTimeframe || trade.zone?.timeframe || 'H4',
             direction: trade.direction || '',
             anchorTime: trade.anchorTime || '',
             anchorIndex: trade.anchorIndex,
+            signalIndex: trade.signalIndex,
+            signalTime: trade.signalTime || '',
             entryIndex: trade.entryIndex,
             entryCandleNumber: trade.entryCandleNumber,
             entryTime: trade.entryTime || '',
@@ -3125,8 +3401,14 @@
             exitType: trade.exitType || '',
             initialStop: trade.initialStop,
             targetPrice: trade.targetPrice,
+            targetPrice2: trade.targetPrice2 ?? null,
+            corrected: !!trade.corrected,
+            correctionNote: trade.correctionNote || '',
+            resultStatus: trade.resultStatus || '',
+            sameBarAmbiguous: !!trade.sameBarAmbiguous,
             riskR: trade.riskR,
             rr: trade.rr,
+            rrTarget2: trade.rrTarget2,
             netR: trade.netR,
             pnlUsd: trade.pnlUsd,
             mfeR: trade.mfeR,
@@ -3157,24 +3439,20 @@
         return `${side} ${symbol}${time ? ` | ${time}` : ''}`;
     }
 
-    function paTrainingCaseCard(item) {
+    function paTrainingCaseCard(item, index = 0) {
         const active = item.id === state.paTrainingSelectedCaseId;
         const reviewed = item.review ? 'is-reviewed' : '';
         const sideClass = item.direction === 'short' ? 'supply' : 'demand';
         const sideLabel = item.direction === 'short' ? 'Bán' : 'Mua';
-        const zone = item.zone || {};
-        const zoneType = item.zoneType || zone.type || '';
-        const low = item.zoneLow ?? zone.low;
-        const high = item.zoneHigh ?? zone.high;
-        const reviewText = item.review ? `Đã chấm: ${item.review.label || item.review.decision}` : item.reason || 'Chưa chấm, đang chờ m dạy AI.';
-        const setupLine = `Entry ${formatPrice(item.entryPrice, item.symbol)} | SL ${formatPrice(item.initialStop, item.symbol)} | TP ${formatPrice(item.targetPrice, item.symbol)} | Nến #${number(item.entryCandleNumber || item.anchorIndex + 1 || 0)}`;
+        const outcomeLabel = item.exitType === 'TP1_SL' ? 'TP1 rồi SL' : item.exitType;
+        const outcome = ['TP', 'TP1', 'TP2', 'TP1_SL', 'SL'].includes(item.exitType) ? `${outcomeLabel} · ${formatSigned(item.netR || 0, 2)}R` : 'Chưa có kết quả';
+        const statusText = item.review ? 'Đã chấm' : 'Chưa chấm';
         return `
-            <button class="pa-zone-card pa-case-card ${active ? 'is-active' : ''} ${reviewed}" type="button" data-pa-case-id="${escapeAttr(item.id)}">
-                <span class="pa-zone-type is-${escapeAttr(sideClass)}">${escapeHtml(sideLabel)}</span>
-                <strong>${escapeHtml(item.symbol || '')} H4 | ${escapeHtml(formatChartTime(item.entryTime || item.anchorTime))}</strong>
-                <small>${escapeHtml(displayZone(zoneType))} ${escapeHtml(formatPrice(low, item.symbol))} - ${escapeHtml(formatPrice(high, item.symbol))} | ${escapeHtml(paTrainingStatusLabel(item.zoneStatus || zone.status))}</small>
-                <small>${escapeHtml(setupLine)}</small>
-                <small>${escapeHtml(reviewText)}</small>
+            <button class="pa-case-row ${active ? 'is-active' : ''} ${reviewed}" type="button" data-pa-case-id="${escapeAttr(item.id)}">
+                <span class="pa-case-number">Ca ${number(index + 1)}</span>
+                <span class="pa-case-direction is-${escapeAttr(sideClass)}">${escapeHtml(sideLabel)}</span>
+                <strong>${escapeHtml(item.symbol || '')} · H4 → M15 · ${escapeHtml(formatChartTime(item.entryTime || item.anchorTime))}</strong>
+                <span class="pa-case-row-meta">${escapeHtml(outcome)} · RR 1:${escapeHtml(formatFixed(item.rr ?? 1, 2))} · ${escapeHtml(statusText)}</span>
             </button>
         `;
     }
@@ -3272,21 +3550,40 @@
         }
         if (trade) {
             const isTeaching = !!trade.isTeachingCase;
+            const hasOutcome = (['TP', 'TP1', 'TP2', 'TP1_SL', 'SL'].includes(trade.exitType)) && Number.isFinite(Number(trade.netR));
             const resultClass = isTeaching
-                ? (trade.direction === 'short' ? 'supply' : 'demand')
+                ? (hasOutcome ? (Number(trade.netR) >= 0 ? 'demand' : 'supply') : (trade.direction === 'short' ? 'supply' : 'demand'))
                 : Number(trade.netR) >= 0 ? 'demand' : 'supply';
+            const exitLabel = trade.exitType === 'TP1_SL' ? 'TP1 rồi SL' : trade.exitType;
             const resultText = isTeaching
-                ? (trade.review ? `Đã chấm: ${trade.review.label || trade.review.decision}` : 'Chưa chấm')
+                ? (hasOutcome ? `${exitLabel} · ${formatSigned(trade.netR, 2)}R · ${trade.review ? 'Đã chấm' : 'Chưa chấm'}` : (trade.review ? `Đã chấm: ${trade.review.label || trade.review.decision}` : 'Chưa có kết quả sau khi sửa'))
                 : `${formatSigned(trade.netR || 0, 2)}R`;
             const zoneText = zone
                 ? `${displayZone(zone.type || trade.zoneType)} ${formatPrice(zone.low ?? trade.zoneLow, trade.symbol)} - ${formatPrice(zone.high ?? trade.zoneHigh, trade.symbol)}`
                 : 'Chưa gắn vùng H4 cụ thể';
+            const zoneReason = trade.zoneReason || zone?.reason || 'Vùng được chọn theo phản ứng giá H4.';
+            const entryReason = trade.entryReason || trade.reason || 'Chưa có lý do vào lệnh.';
+            const riskReason = trade.riskReason || `SL ${formatPrice(trade.initialStop, trade.symbol)} · TP ${formatPrice(trade.targetPrice, trade.symbol)}`;
+            const exitReason = trade.exitReason || 'Chưa có kết quả thoát lệnh.';
             target.innerHTML = `
                 <div class="pa-ai-zone-card is-${escapeAttr(resultClass)} is-case-card">
                     <span>${isTeaching ? 'CA DẠY ĐANG XEM' : 'CA TRADE ĐANG XEM'}</span>
                     <strong>${escapeHtml(paTrainingCaseLabel(trade))}</strong>
-                    <small>Entry ${escapeHtml(formatPrice(trade.entryPrice, trade.symbol))} | SL ${escapeHtml(formatPrice(trade.initialStop, trade.symbol))} | TP ${escapeHtml(formatPrice(trade.targetPrice, trade.symbol))}</small>
+                    <small>${trade.corrected ? 'Đã sửa setup' : 'Đã vào'} · RR đến TP: ${escapeHtml(formatFixed(trade.rr ?? 1, 2))}R</small>
+                    <div class="pa-case-levels" aria-label="Các mức giá của lệnh">
+                        <span><b>Entry</b><strong>${escapeHtml(formatPrice(trade.entryPrice, trade.symbol))}</strong></span>
+                        <span><b>SL</b><strong>${escapeHtml(formatPrice(trade.initialStop, trade.symbol))}</strong></span>
+                        <span><b>TP · ${escapeHtml(formatFixed(trade.rr ?? 1, 2))}R</b><strong>${escapeHtml(formatPrice(trade.targetPrice, trade.symbol))}</strong></span>
+                    </div>
+                    <small>Kéo đường Entry, SL hoặc TP trên biểu đồ để chỉnh mức giá.</small>
                     <small>${escapeHtml(resultText)} | ${escapeHtml(zoneText)}</small>
+                    ${hasOutcome ? `<small>Thoát ${escapeHtml(formatPrice(trade.exitPrice, trade.symbol))} · ${escapeHtml(formatChartTime(trade.exitTime || ''))}</small>` : ''}
+                    <div class="pa-ai-case-reasons">
+                        <div><b>Vùng / lý do</b><span>${escapeHtml(zoneText)} · ${escapeHtml(zoneReason)}</span></div>
+                        <div><b>Lý do vào</b><span>${escapeHtml(entryReason)}</span></div>
+                        <div><b>SL / TP</b><span>${escapeHtml(riskReason)}</span></div>
+                        <div><b>Thoát lệnh</b><span>${escapeHtml(exitReason)}</span></div>
+                    </div>
                 </div>
             `;
             return;
@@ -3643,14 +3940,57 @@
         try {
             if (state.activeTab === 'pa-training') mountSharedMarketChart('pa-training');
             state.chartView.timeframe = resolvedTimeframe;
-            await loadMarketData(file.file);
+            const chartResponse = await api('market_data', { file: file.file });
+            let chartData = chartResponse.market_data;
+            if (resolvedTimeframe !== 'M15') {
+                const m15File = findMarketFile(resolvedSymbol, 'M15');
+                if (m15File) {
+                    const m15Response = await api('market_data', { file: m15File.file });
+                    const m15Bars = m15Response.market_data?.bars || [];
+                    const m15Times = m15Bars.map(barTimeValue).filter(Number.isFinite);
+                    if (m15Times.length) {
+                        const from = Math.min(...m15Times);
+                        const to = Math.max(...m15Times);
+                        const timeframeSeconds = ({ M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 })[resolvedTimeframe] || 1;
+                        chartData = {
+                            ...chartData,
+                            bars: (chartData.bars || [])
+                                .filter((bar) => {
+                                    const time = barTimeValue(bar);
+                                    return Number.isFinite(time) && time + timeframeSeconds > from && time <= to;
+                                })
+                                .map((bar, index) => ({ ...bar, index })),
+                            paAlignment: { baseline: 'M15', from, to, referenceBars: m15Bars.length },
+                        };
+                        if (!chartData.bars.length) {
+                            throw new Error(`${resolvedSymbol} ${resolvedTimeframe} không có nến trùng khoảng thời gian với M15. Hãy tải lại dữ liệu H4/M15 cùng cặp.`);
+                        }
+                    }
+                }
+            }
+            await loadMarketData(file.file, { marketData: chartData });
             state.paTrainingSymbol = resolvedSymbol;
             state.paTrainingChartData = state.activeMarketData;
             state.paTrainingChartError = '';
             const teachingCase = paTrainingSelectedTeachingCase();
             const zone = paTrainingSelectedZone();
             const anchor = options.anchorTime || teachingCase?.anchorTime || teachingCase?.entryTime || zone?.firstTouchTime || zone?.originCandleTime || zone?.createdAt;
-            if (anchor) {
+            const changedCaseTimeframe = teachingCase
+                && String(teachingCase.timeframe || '').toUpperCase() !== String(resolvedTimeframe).toUpperCase();
+            if (changedCaseTimeframe && paTrainingCaseFitsChartData(teachingCase, state.activeMarketData)) {
+                focusPaTrainingTeachingCaseWindow(teachingCase);
+            } else if (changedCaseTimeframe) {
+                const bars = state.activeMarketData?.bars || [];
+                const span = clamp(220, Math.min(12, bars.length), Math.max(12, bars.length));
+                state.chartView.barsOnScreen = span;
+                state.chartView.rightOffset = 0;
+                state.chartView.priceScale = 1;
+                state.chartView.priceOffset = 0;
+                state.chartView.replay.enabled = false;
+                state.chartView.replay.index = Math.max(0, bars.length - 1);
+                renderReplayControls(state.activeMarketData);
+                drawMarketChart(state.activeMarketData);
+            } else if (anchor) {
                 focusChartTime(timeToSeconds(anchor));
             }
             return true;
@@ -3676,6 +4016,39 @@
             selectedTradeId: trade?.id || '',
             selectedTeachingCaseId: teachingCase?.id || '',
             selectedCase: trade ? paTrainingCaseLabel(trade) : '',
+        };
+    }
+    function paTrainingChartQuestionAttachment() {
+        const canvas = document.querySelector('#marketChart');
+        const all = getChartDrawings(state.activeMarketData).filter((drawing) => !drawing.hidden);
+        const selected = selectedDrawingObjects().filter((drawing) => !drawing.hidden);
+        const drawings = (selected.length ? selected : all.slice(-1)).slice(0, 12).map((drawing) => {
+            const details = {};
+            ['type', 'label', 'text', 'price', 'startPrice', 'endPrice', 'entry', 'stopLoss', 'takeProfit', 'startTime', 'endTime', 'startBar', 'endBar', 'points', 'point', 'color'].forEach((key) => {
+                if (drawing[key] !== undefined) details[key] = drawing[key];
+            });
+            return { id: getDrawingId(drawing), ...details };
+        });
+        let image = '';
+        if (canvas && drawings.length) {
+            try {
+                const maxSide = 1280;
+                const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+                const copy = document.createElement('canvas');
+                copy.width = Math.max(1, Math.round(canvas.width * scale));
+                copy.height = Math.max(1, Math.round(canvas.height * scale));
+                copy.getContext('2d')?.drawImage(canvas, 0, 0, copy.width, copy.height);
+                image = copy.toDataURL('image/jpeg', 0.68);
+                if (image.length > 3_500_000) image = '';
+            } catch (_) { image = ''; }
+        }
+        if (!drawings.length && !image) return null;
+        return {
+            source: 'chart_annotation',
+            symbol: state.activeMarketData?.symbol || state.paTrainingSymbol || '',
+            timeframe: state.activeMarketData?.timeframe || state.paTrainingChartTimeframe || 'H4',
+            drawings,
+            imageDataUrl: image,
         };
     }
     function paTrainingChatScopeKey(context = {}) {
@@ -3709,7 +4082,9 @@
                 provider: item.provider || '',
                 context,
             };
-        }).filter(Boolean).slice(-120);
+        }).filter(Boolean)
+            .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+            .slice(-120);
     }
 
     function readPaTrainingChatLocalStore() {
@@ -3780,6 +4155,7 @@
     }
 
     function renderPaTrainingChat() {
+        syncPaWorkspaceUi();
         const panel = $('#paTrainingAiChatPanel');
         const log = $('#paTrainingChatLog');
         const input = $('#paTrainingChatInput');
@@ -3816,6 +4192,10 @@
         }
         requestAnimationFrame(() => {
             log.scrollTop = log.scrollHeight;
+            log.lastElementChild?.scrollIntoView({ block: 'end', behavior: 'auto' });
+            setTimeout(() => {
+                if (log.isConnected) log.scrollTop = log.scrollHeight;
+            }, 0);
         });
     }
 
@@ -3830,6 +4210,7 @@
         const historyBeforeSend = state.paTrainingChatMessages.slice(-12);
         state.paTrainingChatLoading = true;
         const tradeSnapshot = paTrainingTradeSnapshot(trade);
+        const chartAttachment = paTrainingChartQuestionAttachment();
         const chatContext = paTrainingChatContext(zone, trade, tradeSnapshot);
         const scopeKey = paTrainingChatScopeKey(chatContext);
         state.paTrainingChatLoadedKey = scopeKey;
@@ -3855,6 +4236,7 @@
                 trade: tradeSnapshot,
                 context: chatContext,
                 history: historyBeforeSend,
+                chart_attachment: chartAttachment,
             });
             if (Array.isArray(data.messages)) {
                 state.paTrainingChatMessages = normalizePaTrainingChatMessages(data.messages, chatContext);
@@ -4027,6 +4409,27 @@
         renderPaTraining();
         showToast(`Đã chuyển sang ca ${nextIndex + 1}/${trades.length}`);
     }
+
+    function skipPaTrainingCurrentCase() {
+        const cases = paTrainingFilteredCases();
+        if (cases.length === 1 && cases[0].id === state.paTrainingSelectedCaseId) {
+            state.paTrainingSelectedCaseId = '';
+            renderPaTraining();
+            showToast('Đã bỏ qua ca hiện tại. Ca vẫn còn trong danh sách để mở lại.');
+            return;
+        }
+        movePaTrainingTrade(1);
+    }
+
+    function activatePaTrainingLevelDrag() {
+        if (!paTrainingSelectedTeachingCase()) {
+            showToast('Chọn một ca trade trước rồi kéo các đường trên chart.');
+            return;
+        }
+        setChartTool('cursor');
+        showToast('Kéo trực tiếp đường Entry, SL hoặc TP trên chart; thả chuột để áp dụng.');
+        $('#marketChart')?.focus({preventScroll: true});
+    }
     function renderPaTrainingSetupGuide() {
         const target = $('#paTrainingSetupGuide');
         if (!target) return;
@@ -4093,6 +4496,7 @@
         }
         state.paTrainingSymbol = symbol;
         state.paTrainingTimeframe = $('#paTrainingTimeframeSelect')?.value || 'H4';
+        const rememberedProgress = savedPaWorkspace(state.paTrainingSymbol, state.paTrainingTimeframe);
         state.paTrainingLoading = true;
         state.paTrainingCaseLoading = true;
         state.paTrainingError = '';
@@ -4103,25 +4507,37 @@
                 symbol: state.paTrainingSymbol,
                 timeframe: state.paTrainingTimeframe,
                 filter: state.paTrainingZoneFilter || 'active',
-                limit: 180,
+                limit: clamp(Number($('#paTrainingCaseCount')?.value || 1), 1, 100),
             });
             state.paTrainingZones = data.zone_candidates || [];
             state.paTrainingTradeCases = data.trade_cases || [];
+            const remembered = savedPaWorkspace(state.paTrainingSymbol, state.paTrainingTimeframe);
+            const rememberedCase = state.paTrainingTradeCases.find((item) => item.id === (options.keepSelectionCaseId || state.paTrainingSelectedCaseId || remembered.selectedCaseId));
             const preferred = options.keepSelectionZoneId
                 ? state.paTrainingTradeCases.find((item) => item.zoneId === options.keepSelectionZoneId)
                 : null;
-            state.paTrainingSelectedCaseId = preferred?.id || data.selected_case_id || state.paTrainingTradeCases.find((item) => !item.review)?.id || state.paTrainingTradeCases[0]?.id || '';
+            state.paTrainingSelectedCaseId = rememberedCase?.id || preferred?.id || data.selected_case_id || state.paTrainingTradeCases.find((item) => !item.review)?.id || state.paTrainingTradeCases[0]?.id || '';
             const selected = paTrainingSelectedTeachingCase();
             state.paTrainingSelectedZoneId = selected?.zoneId || selected?.zone?.id || state.paTrainingZones[0]?.id || '';
             state.paTrainingMemory = normalizePaTrainingMemory(data.pa_training_memory);
             if (selected) {
-                await focusPaTrainingSelectedCase('H4');
+                await focusPaTrainingSelectedCase(options.chartTimeframe || 'M15');
+                // Reloading the case queue (including after creating new cases) should focus
+                // the selected setup. Restore the old replay cursor only when resuming the
+                // workspace after a page/app restart; otherwise a stale cursor can hide the
+                // selected case behind a replay cutoff near the beginning of the chart.
+                if (options.restoreProgress === true && rememberedProgress.selectedCaseId === selected.id) restorePaTrainingReplayProgress(state.activeMarketData, rememberedProgress);
             } else {
-                await loadPaTrainingChartForSelection('H4', { silent: true });
+                await loadPaTrainingChartForSelection(state.paTrainingTimeframe || 'H4', { silent: true });
             }
+            persistPaWorkspace({
+                selectedCaseId: state.paTrainingSelectedCaseId,
+                replayIndex: state.chartView.replay.enabled ? state.chartView.replay.index : null,
+                replayEnabled: state.chartView.replay.enabled,
+            });
             if (!options.silent) {
                 const summary = data.case_summary || {};
-                showToast(`Đã tạo ${number(state.paTrainingTradeCases.length)} ca dạy từ ${number(summary.h4_bars || 0)} nến H4`);
+                showToast(`Đã tìm ${number(state.paTrainingTradeCases.length)} lệnh đã vào và chạm SL/TP từ ${number(summary.h4_bars || 0)} nến H4, ${number(summary.m15_bars || 0)} nến M15`);
             }
         } catch (error) {
             state.paTrainingError = error.message;
@@ -4131,6 +4547,14 @@
             state.paTrainingLoading = false;
             state.paTrainingCaseLoading = false;
             renderPaTraining();
+            if (options.restoreProgress === true && state.activeMarketData && rememberedProgress.selectedCaseId === state.paTrainingSelectedCaseId) {
+                restorePaTrainingReplayProgress(state.activeMarketData, rememberedProgress);
+                persistPaWorkspace({
+                    selectedCaseId: state.paTrainingSelectedCaseId,
+                    replayIndex: rememberedProgress.replayIndex ?? (state.chartView.replay.enabled ? state.chartView.replay.index : null),
+                    replayEnabled: rememberedProgress.replayIndex !== null && rememberedProgress.replayIndex !== undefined ? rememberedProgress.replayEnabled !== false : state.chartView.replay.enabled,
+                });
+            }
         }
     }
 
@@ -4175,6 +4599,7 @@
     }
 
     async function savePaTrainingCaseDecision(decision, label) {
+        if (decision === 'weak_case') { paCaseManager?.edit(); return; }
         setPaTrainingSessionDecision(decision, label);
     }
 
@@ -4289,6 +4714,67 @@
         }
         await loadPaTrainingChartForSymbol(symbol, timeframe);
         showToast(`Đã mở chart ${symbol} ${timeframe} trong màn Dạy Price Action.`);
+    }
+
+    async function changePaWorkspaceTimeframe(timeframe) {
+        const targetTimeframe = String(timeframe || 'H4').toUpperCase();
+        const symbol = state.activeMarketData?.symbol || $('#paTrainingSymbolSelect')?.value || state.paTrainingSymbol;
+        if (!symbol) {
+            showToast('Chọn cặp tiền trước khi đổi khung.');
+            return;
+        }
+        const previousData = state.activeMarketData;
+        const previousBars = previousData?.bars || [];
+        const replay = state.chartView.replay;
+        const replayTime = replay.enabled
+            ? (replay.time !== null && Number.isFinite(Number(replay.time)) ? Number(replay.time) : barTimeValue(previousBars[replay.index]) + timeframeSeconds(previousData?.timeframe) - 1)
+            : null;
+        const previousVisibleLast = previousBars.length
+            ? clamp(previousBars.length - Math.max(0, Math.round(state.chartView.rightOffset || 0)) - 1, 0, previousBars.length - 1)
+            : -1;
+        const viewportRightTime = previousVisibleLast >= 0 ? barTimeValue(previousBars[previousVisibleLast]) : NaN;
+        const view = {
+            barsOnScreen: state.chartView.barsOnScreen,
+            priceScale: state.chartView.priceScale,
+            priceOffset: state.chartView.priceOffset,
+        };
+        const loaded = await loadPaTrainingChartForSymbol(symbol, targetTimeframe, { silent: true });
+        if (loaded) {
+            const bars = state.activeMarketData?.bars || [];
+            if (replayTime !== null && Number.isFinite(replayTime) && bars.length) {
+                replay.time = replayTime;
+                replay.enabled = true;
+                replay.index = chartIndexAtOrBeforeTime(bars, replayTime, replay.index);
+                const previousSeconds = timeframeSeconds(previousData?.timeframe);
+                const targetSeconds = timeframeSeconds(state.activeMarketData?.timeframe);
+                const targetSpan = Math.round((view.barsOnScreen || 180) * previousSeconds / targetSeconds);
+                state.chartView.barsOnScreen = clamp(targetSpan, Math.min(12, bars.length), bars.length);
+                state.chartView.priceScale = view.priceScale;
+                state.chartView.priceOffset = view.priceOffset;
+                const visibleRight = Number.isFinite(viewportRightTime)
+                    ? chartIndexAtOrBeforeTime(bars, viewportRightTime, bars.length - 1)
+                    : bars.length - 1;
+                state.chartView.rightOffset = clamp(
+                    bars.length - 1 - visibleRight,
+                    ...Object.values(chartRightOffsetLimits(bars.length, state.chartView.barsOnScreen))
+                );
+                renderReplayControls(state.activeMarketData);
+                drawMarketChart(state.activeMarketData);
+            }
+            const teachingCase = paTrainingSelectedTeachingCase();
+            if (replayTime === null && teachingCase && paTrainingCaseFitsChartData(teachingCase, state.activeMarketData)) {
+                // Re-map the selected case's timestamp to the target timeframe's bar
+                // index. Keeping the previous timeframe's replay index can place the
+                // viewport and nearby zones at an unrelated price level.
+                focusPaTrainingTeachingCaseWindow(teachingCase);
+                persistPaWorkspace({
+                    selectedCaseId: teachingCase.id,
+                    replayIndex: state.chartView.replay.index,
+                    replayEnabled: state.chartView.replay.enabled,
+                });
+            }
+        }
+        syncPaWorkspaceUi();
     }
 
     function renderTrainer() {
@@ -9276,8 +9762,9 @@
         const ctx = canvas.getContext('2d');
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.max(760, Math.floor(rect.width * dpr));
-        canvas.height = Math.max(480, Math.floor(rect.height * dpr));
+        if (!rect.width || !rect.height) return;
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
         ctx.scale(dpr, dpr);
 
         const width = canvas.width / dpr;
@@ -9291,6 +9778,7 @@
         $('#marketChartMeta').textContent = data ? `${data.timeframe} · ${number(allBars.length)} nến` : 'Chưa chọn tệp';
         if (!allBars.length) {
             state.chartView.lastLayout = null;
+            drawPaTrainingLevelOverlay(null);
             ctx.fillStyle = '#65717f';
             ctx.fillText('Không có dữ liệu nến để vẽ.', 24, 40);
             return;
@@ -9315,11 +9803,13 @@
         drawCompareSeries(ctx, layout);
         drawStrategyDebugOverlay(ctx, layout, analytics);
         drawBacktestTrades(ctx, layout, analytics);
-        drawPaTrainingTeachingCaseOverlay(ctx, layout);
+        drawPaNearbyZones(ctx, layout);
         drawMarketDrawings(ctx, layout, data);
         drawMarketAxis(ctx, layout, data.symbol);
         drawMarketFooter(ctx, layout, data);
         drawChartCrosshair(ctx, layout, data);
+        drawPaTrainingLevelOverlay(layout);
+        updatePaTrainingTimeframeNotice(data);
         renderFloatingToolbar();
         renderFavoriteToolbar();
     }
@@ -9334,30 +9824,10 @@
         state.chartView.priceScale = clamp(Number(state.chartView.priceScale || 1), 0.2, 20);
         state.chartView.priceOffset = Number(state.chartView.priceOffset || 0);
 
-        if (state.chartView.replay.enabled) {
-            const replayLastIndex = Math.max(0, allBars.length - 1);
-            const replayIndex = clamp(Math.round(state.chartView.replay.index || 0), 0, replayLastIndex);
-            state.chartView.replay.index = replayIndex;
-            const replayVisibleCount = Math.min(state.chartView.barsOnScreen, allBars.length);
-            const currentLastExclusive = clamp(
-                allBars.length - state.chartView.rightOffset,
-                replayVisibleCount,
-                allBars.length + Math.max(0, replayVisibleCount - minBars)
-            );
-            const currentFirst = clamp(
-                Math.round(currentLastExclusive - replayVisibleCount),
-                0,
-                Math.max(0, allBars.length - minBars)
-            );
-            const currentLast = Math.min(allBars.length, Math.max(currentFirst + minBars, Math.round(currentLastExclusive)));
-            if (replayIndex < currentFirst || replayIndex >= currentLast) {
-                const replayFirst = clamp(
-                    Math.round(replayIndex - replayVisibleCount * 0.65),
-                    0,
-                    Math.max(0, allBars.length - replayVisibleCount)
-                );
-                state.chartView.rightOffset = clamp(allBars.length - replayFirst - replayVisibleCount, offsetLimits.min, offsetLimits.max);
-            }
+        if (state.chartView.replay.enabled && state.chartView.replay.time !== null && Number.isFinite(Number(state.chartView.replay.time))) {
+            state.chartView.replay.index = chartIndexAtOrBeforeTime(allBars, Number(state.chartView.replay.time), state.chartView.replay.index);
+        } else if (state.chartView.replay.enabled) {
+            state.chartView.replay.index = clamp(Math.round(state.chartView.replay.index || 0), 0, Math.max(0, allBars.length - 1));
         }
 
         const visibleCount = Math.min(state.chartView.barsOnScreen, allBars.length);
@@ -9398,11 +9868,16 @@
 
         const prices = priceBars.flatMap((bar) => [Number(bar.high), Number(bar.low)]).filter(Number.isFinite);
         const teachingCase = state.activeTab === 'pa-training' ? paTrainingSelectedTeachingCase() : null;
-        if (teachingCase && sameSymbol(teachingCase.symbol, data.symbol)) {
-            [teachingCase.entryPrice, teachingCase.initialStop, teachingCase.targetPrice, teachingCase.exitPrice, teachingCase.zoneLow, teachingCase.zoneHigh]
+        if (teachingCase && paTrainingCaseFitsChartData(teachingCase, data)) {
+            [teachingCase.entryPrice, teachingCase.initialStop, teachingCase.targetPrice, teachingCase.targetPrice2, teachingCase.zoneLow, teachingCase.zoneHigh]
+                .filter(value => value !== null && value !== undefined)
                 .map(Number)
                 .filter(Number.isFinite)
                 .forEach((price) => prices.push(price));
+        }
+        if (state.activeTab === 'pa-training' && paNearbyZonesVisible) {
+            const nearby = paNearbyZones(data);
+            [...nearby.entries, ...nearby.targets].forEach(zone => prices.push(zone.low, zone.high));
         }
         if (!prices.length) prices.push(1);
         const minPrice = Math.min(...prices);
@@ -10014,102 +10489,155 @@
         ctx.restore();
     }
 
+    function paNearbyZones(data = state.activeMarketData) {
+        const bars = data?.bars || [];
+        const cutoff = state.chartView.replay.enabled ? replayCutoffIndex(data) : bars.length - 1;
+        const trade = paTrainingSelectedTeachingCase();
+        const direction = trade && sameSymbol(trade.symbol, data?.symbol) ? trade.direction : 'long';
+        if (paNearbyZoneCache?.bars === bars && paNearbyZoneCache.cutoff === cutoff && paNearbyZoneCache.direction === direction) return paNearbyZoneCache.result;
+        const result = window.PaZones?.nearest(bars, cutoff, direction) || {entries: [], targets: []};
+        paNearbyZoneCache = {bars, cutoff, direction, result};
+        return result;
+    }
+
+    function drawPaNearbyZones(ctx, layout) {
+        if (state.activeTab !== 'pa-training' || !paNearbyZonesVisible) return;
+        const nearby = paNearbyZones(layout.data);
+        const zones = nearby.targets.map(zone => ({...zone, color: '#059669'}));
+        ctx.save();
+        ctx.beginPath(); ctx.rect(layout.priceArea.left, layout.priceArea.top, layout.priceArea.width, layout.priceArea.height); ctx.clip();
+        zones.forEach((zone, index) => {
+            const left = Math.max(layout.priceArea.left, Math.min(layout.x(zone.originIndex), layout.priceArea.right - 130));
+            const top = layout.y(zone.high), bottom = layout.y(zone.low);
+            ctx.globalAlpha = .09; ctx.fillStyle = zone.color;
+            ctx.fillRect(left, top, layout.priceArea.right - left, Math.max(3, bottom - top));
+            ctx.globalAlpha = .8; ctx.strokeStyle = zone.color; ctx.setLineDash([6, 4]);
+            ctx.strokeRect(left, top, layout.priceArea.right - left, Math.max(3, bottom - top));
+        });
+        ctx.restore();
+        const note = $('#paNearbyZonesNote');
+        if (note) note.textContent = `${layout.data.timeframe} · ${nearby.targets.length}/2 vùng TP (${nearby.direction === 'short' ? 'bán' : 'mua'})`;
+    }
+
     function drawPaTrainingTeachingCaseOverlay(ctx, layout) {
         if (state.activeTab !== 'pa-training') return;
         const trade = paTrainingSelectedTeachingCase();
-        if (!trade || !layout?.data || !sameSymbol(trade.symbol, layout.data.symbol)) return;
-        const zoneLow = Number(trade.zoneLow ?? trade.zone?.low);
-        const zoneHigh = Number(trade.zoneHigh ?? trade.zone?.high);
+        if (!trade || !layout?.data || !paTrainingCaseFitsChartData(trade, layout.data)) return;
         const entry = Number(trade.entryPrice);
         const sl = Number(trade.initialStop);
         const tp = Number(trade.targetPrice);
-        if (![zoneLow, zoneHigh, entry, sl, tp].every(Number.isFinite)) return;
+        const risk = Math.abs(entry - sl);
+        if (![entry, sl, tp].every(Number.isFinite) || risk <= 0) return;
         const indexFor = (time, fallback) => {
             const byTime = chartIndexForTime(layout, time);
             if (Number.isFinite(byTime)) return byTime;
             if (String(layout.data.timeframe || '').toUpperCase() === String(trade.timeframe || '').toUpperCase() && Number.isFinite(Number(fallback))) return Number(fallback);
             return NaN;
         };
-        const originIndex = indexFor(trade.zone?.originCandleTime || trade.anchorTime || trade.entryTime, trade.zoneOriginIndex ?? trade.zone?.originIndex);
         const entryIndex = indexFor(trade.entryTime || trade.anchorTime, trade.entryIndex ?? trade.anchorIndex);
-        const exitIndex = indexFor(trade.exitTime || trade.entryTime || trade.anchorTime, trade.exitIndex ?? entryIndex);
-        if (![originIndex, entryIndex].some(Number.isFinite)) return;
-        const xOrigin = clamp(layout.x(Number.isFinite(originIndex) ? originIndex : entryIndex), layout.priceArea.left, layout.priceArea.right);
-        const xEntry = clamp(layout.x(Number.isFinite(entryIndex) ? entryIndex : originIndex), layout.priceArea.left, layout.priceArea.right);
-        const xExit = clamp(layout.x(Number.isFinite(exitIndex) ? exitIndex : entryIndex), layout.priceArea.left, layout.priceArea.right);
-        const isLong = (trade.direction || '') !== 'short';
-        const zoneColor = isLong ? '#0f9f6e' : '#ef4444';
-        const zoneFill = isLong ? 'rgba(16, 185, 129, 0.16)' : 'rgba(239, 68, 68, 0.14)';
-        const top = layout.y(Math.max(zoneLow, zoneHigh));
-        const bottom = layout.y(Math.min(zoneLow, zoneHigh));
-        const bandLeft = Math.min(xOrigin, xEntry);
-        const bandRight = Math.max(xExit, xEntry, bandLeft + 22);
-
+        if (!Number.isFinite(entryIndex)) return;
+        const xEntry = clamp(layout.x(entryIndex), layout.priceArea.left, layout.priceArea.right);
+        const tpColor = '#059669';
+        const slColor = '#f23645';
+        const bandRight = layout.priceArea.right;
+        const boxRight = Math.min(bandRight, xEntry + clamp(layout.priceArea.width * 0.18, 150, 250));
         ctx.save();
-        ctx.fillStyle = zoneFill;
-        ctx.strokeStyle = zoneColor;
-        ctx.lineWidth = 2;
-        ctx.fillRect(bandLeft, Math.min(top, bottom), Math.max(2, bandRight - bandLeft), Math.max(3, Math.abs(bottom - top)));
-        ctx.strokeRect(bandLeft, Math.min(top, bottom), Math.max(2, bandRight - bandLeft), Math.max(3, Math.abs(bottom - top)));
-        ctx.fillStyle = zoneColor;
-        ctx.font = '800 11px Segoe UI, Arial';
-        const zoneText = trade.annotations?.zoneLabel || (isLong ? 'Vùng canh buy' : 'Vùng canh sell');
-        ctx.fillText(zoneText, bandLeft + 6, Math.min(top, bottom) + 16);
-
+        const yEntry = layout.y(entry), ySl = layout.y(sl), yTp = layout.y(tp);
+        const rewardTop = Math.min(yEntry, yTp), rewardBottom = Math.max(yEntry, yTp);
+        const riskTop = Math.min(yEntry, ySl), riskBottom = Math.max(yEntry, ySl);
+        ctx.globalAlpha = 0.17;
+        ctx.fillStyle = tpColor;
+        ctx.fillRect(xEntry, rewardTop, Math.max(2, boxRight - xEntry), Math.max(2, rewardBottom - rewardTop));
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = tpColor;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(xEntry, rewardTop, Math.max(2, boxRight - xEntry), Math.max(2, rewardBottom - rewardTop));
+        ctx.globalAlpha = 0.17;
+        ctx.fillStyle = slColor;
+        ctx.fillRect(xEntry, riskTop, Math.max(2, boxRight - xEntry), Math.max(2, riskBottom - riskTop));
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = slColor;
+        ctx.strokeRect(xEntry, riskTop, Math.max(2, boxRight - xEntry), Math.max(2, riskBottom - riskTop));
+        ctx.globalAlpha = 1;
         ctx.setLineDash([6, 4]);
-        drawTradeLevel(ctx, layout, entry, xEntry, Math.max(xEntry + 70, bandRight), '#2563eb', 'ENTRY');
-        drawTradeLevel(ctx, layout, sl, xEntry, Math.max(xEntry + 70, bandRight), '#f23645', 'SL');
-        drawTradeLevel(ctx, layout, tp, xEntry, Math.max(xEntry + 70, bandRight), '#089981', 'TP');
+        drawTradeLevel(ctx, layout, entry, xEntry, bandRight, '#2563eb');
+        drawTradeLevel(ctx, layout, sl, xEntry, bandRight, slColor);
+        drawTradeLevel(ctx, layout, tp, xEntry, bandRight, tpColor);
+        const tags = [
+            { label: `TP · RR ${formatFixed(Math.abs(tp - entry) / risk, 2)}R`, price: tp, color: tpColor },
+            { label: 'Entry', price: entry, color: '#2563eb' },
+            { label: 'SL', price: sl, color: slColor },
+        ];
         ctx.setLineDash([]);
-
-        const entryY = layout.y(entry);
-        const exitY = layout.y(Number.isFinite(Number(trade.exitPrice)) ? Number(trade.exitPrice) : entry);
-        ctx.strokeStyle = '#111827';
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.moveTo(xEntry, entryY);
-        ctx.lineTo(xExit, exitY);
-        ctx.stroke();
-        drawTradeMarker(ctx, xEntry, entryY, isLong ? 'up' : 'down', zoneColor, true, 'Vào');
-        drawTradeMarker(ctx, xExit, exitY, isLong ? 'down' : 'up', Number(trade.netR) >= 0 ? '#089981' : '#f23645', true, trade.exitType || 'Thoát');
-
-        const cutoff = replayCutoffIndex(layout.data);
-        if (Number.isFinite(cutoff) && cutoff >= layout.first && cutoff < layout.lastExclusive) {
-            const xx = layout.x(cutoff);
-            ctx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
-            ctx.lineWidth = 1.4;
-            ctx.setLineDash([4, 5]);
-            ctx.beginPath();
-            ctx.moveTo(xx, layout.priceArea.top);
-            ctx.lineTo(xx, layout.priceArea.bottom);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = '#111827';
-            ctx.font = '800 10px Segoe UI, Arial';
-            ctx.fillText(`Nến #${cutoff + 1}`, Math.min(xx + 6, layout.priceArea.right - 72), layout.priceArea.top + 14);
+        ctx.font = '700 11px Segoe UI, Arial';
+        tags.forEach(({label, price, color}) => {
+            const text = `${label} ${formatPrice(price, trade.symbol)}`;
+            const width = ctx.measureText(text).width + 12;
+            const y = clamp(layout.y(price) - 9, layout.priceArea.top + 2, layout.priceArea.bottom - 21);
+            ctx.fillStyle = color;
+            const labelX = Math.max(xEntry + 4, bandRight - width - 4);
+            ctx.fillRect(labelX, y, width, 19);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(text, labelX + 6, y + 13);
+        });
+        if (state.chartView.teachingLevelMarkersVisible !== false) {
+            drawTeachingCasePointMarker(ctx, xEntry, yEntry, 'ENTRY', '#2563eb', layout);
+            drawTeachingCasePointMarker(ctx, xEntry, ySl, 'SL', slColor, layout);
+            drawTeachingCasePointMarker(ctx, xEntry, yTp, 'TP', tpColor, layout);
         }
-
-        const note = [trade.entryReason || trade.reason || '', trade.riskReason || '', trade.exitReason || ''].filter(Boolean).join(' ');
-        if (note) {
-            const cardX = layout.priceArea.left + 10;
-            const cardY = layout.priceArea.top + 28;
-            const cardW = Math.min(520, layout.priceArea.width - 20);
-            ctx.fillStyle = bodyIsDark() ? 'rgba(15, 23, 42, 0.86)' : 'rgba(255, 255, 255, 0.92)';
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.7)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            if (typeof ctx.roundRect === 'function') ctx.roundRect(cardX, cardY, cardW, 52, 8);
-            else ctx.rect(cardX, cardY, cardW, 52);
-            ctx.fill();
-            ctx.stroke();
-            ctx.fillStyle = bodyIsDark() ? '#e5e7eb' : '#0f172a';
-            ctx.font = '800 12px Segoe UI, Arial';
-            ctx.fillText(paTrainingCaseLabel(trade), cardX + 10, cardY + 18);
-            ctx.fillStyle = bodyIsDark() ? '#cbd5e1' : '#475569';
-            ctx.font = '12px Segoe UI, Arial';
-            ctx.fillText(note.slice(0, 150), cardX + 10, cardY + 38);
-        }
+        ctx.setLineDash([]);
         ctx.restore();
+    }
+
+    function drawTeachingCasePointMarker(ctx, x, y, label, color, layout) {
+        const badgeWidth = label === 'ENTRY' ? 46 : 25;
+        const badgeHeight = 17;
+        const badgeX = x + badgeWidth + 16 <= layout.priceArea.right ? x + 10 : x - badgeWidth - 10;
+        const badgeY = clamp(y - badgeHeight / 2, layout.priceArea.top + 2, layout.priceArea.bottom - badgeHeight - 2);
+        ctx.save();
+        ctx.globalAlpha = 0.96;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
+        ctx.font = '700 9px Segoe UI, Arial';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, badgeX + 4, badgeY + badgeHeight / 2);
+        ctx.restore();
+    }
+
+    function drawPaTrainingLevelOverlay(layout = state.chartView.lastLayout) {
+        const chart = $('#marketChart');
+        if (!chart?.parentElement) return;
+        let overlay = $('#paTradeLevelOverlay');
+        if (!overlay) {
+            overlay = document.createElement('canvas');
+            overlay.id = 'paTradeLevelOverlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            chart.parentElement.appendChild(overlay);
+        }
+        const rect = chart.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        overlay.style.left = `${chart.offsetLeft}px`;
+        overlay.style.top = `${chart.offsetTop}px`;
+        overlay.style.width = `${rect.width}px`;
+        overlay.style.height = `${rect.height}px`;
+        const width = Math.max(1, Math.floor(rect.width * dpr));
+        const height = Math.max(1, Math.floor(rect.height * dpr));
+        if (overlay.width !== width || overlay.height !== height) {
+            overlay.width = width;
+            overlay.height = height;
+        }
+        const ctx = overlay.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        if (layout && state.activeTab === 'pa-training') drawPaTrainingTeachingCaseOverlay(ctx, layout);
     }
     function drawIndicatorPanels(ctx, layout, analytics) {
         if (layout.rsiArea) {
@@ -10302,7 +10830,7 @@
         ctx.moveTo(x1, yy);
         ctx.lineTo(x2, yy);
         ctx.stroke();
-        if (x2 - x1 > 60) {
+        if (label && x2 - x1 > 60) {
             ctx.fillStyle = color;
             ctx.font = '700 10px Segoe UI, Arial';
             ctx.fillText(label, x1 + 4, yy - 4);
@@ -10443,12 +10971,18 @@
         ctx.fillText(`${data.symbol} · ${data.timeframe}`, priceArea.left + 8, 18);
         ctx.fillStyle = bodyIsDark() ? '#a8b3c1' : '#65717f';
         ctx.font = '12px Segoe UI, Arial';
-        const markerEvery = Math.max(1, Math.floor(bars.length / 6));
+        const markerCount = Math.max(1, Math.min(6, Math.floor(priceArea.width / 110)));
+        const markerEvery = Math.max(1, Math.floor(bars.length / markerCount));
+        let previousLabelRight = -Infinity;
         bars.forEach((bar, i) => {
             if (i % markerEvery !== 0 && i !== bars.length - 1) return;
             const xx = layout.x(barsFirstIndex + i);
             const label = formatChartTime(bar.time_iso || bar.time);
-            ctx.fillText(label, xx - 28, layout.height - 16);
+            const labelWidth = ctx.measureText(label).width;
+            const labelLeft = Math.max(priceArea.left, Math.min(xx - labelWidth / 2, priceArea.right - labelWidth));
+            if (labelLeft < previousLabelRight + 14) return;
+            ctx.fillText(label, labelLeft, layout.height - 16);
+            previousLabelRight = labelLeft + labelWidth;
         });
     }
 
@@ -11259,6 +11793,8 @@
         });
         $('#chartAddCompareBtn')?.addEventListener('click', () => addCompareSymbol().catch((e) => showToast(e.message)));
         $('#chartClearCompareBtn')?.addEventListener('click', clearCompareSymbols);
+        $('#chartSelectionToM15Btn')?.addEventListener('click', () => jumpToSelectedChartRange('M15').catch((e) => showToast(e.message)));
+        $('#chartSelectionToH1Btn')?.addEventListener('click', () => jumpToSelectedChartRange('H1').catch((e) => showToast(e.message)));
         $('#chartTimeframeMoreToggle')?.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -11343,6 +11879,7 @@
             stopChartReplay(false);
             state.chartView.replay.enabled = false;
             state.chartView.replay.index = 0;
+            if (state.activeTab === 'pa-training') persistPaWorkspace({ replayIndex: 0, replayEnabled: false });
             jumpChartToBoundary('start');
         });
         $('#chartJumpEndBtn')?.addEventListener('click', () => {
@@ -11350,6 +11887,7 @@
             stopChartReplay(false);
             state.chartView.replay.enabled = false;
             state.chartView.replay.index = last;
+            if (state.activeTab === 'pa-training') persistPaWorkspace({ replayIndex: last, replayEnabled: false });
             jumpChartToBoundary('end');
         });
         $('#chartScreenshotBtn')?.addEventListener('click', takeChartScreenshot);
@@ -11452,6 +11990,45 @@
         drawMarketChart(state.activeMarketData);
     }
 
+    function findPaTrainingLevelAtPoint(point, layout) {
+        const trade = paTrainingSelectedTeachingCase();
+        if (!trade || !paTrainingCaseFitsChartData(trade, layout.data)) return '';
+        const entryIndex = chartIndexForTime(layout, trade.entryTime || trade.anchorTime);
+        if (!Number.isFinite(entryIndex)) return '';
+        const startX = clamp(layout.x(entryIndex), layout.priceArea.left, layout.priceArea.right);
+        if (point.x < startX || point.x > layout.priceArea.right || point.y < layout.priceArea.top || point.y > layout.priceArea.bottom) return '';
+        const levels = [
+            ['entryPrice', Number(trade.entryPrice)],
+            ['initialStop', Number(trade.initialStop)],
+            ['targetPrice', Number(trade.targetPrice)],
+        ];
+        const nearest = levels
+            .map(([key, price]) => ({key, distance: Number.isFinite(price) ? Math.abs(layout.y(price) - point.y) : Infinity}))
+            .sort((a, b) => a.distance - b.distance)[0];
+        return nearest?.distance <= 12 ? nearest.key : '';
+    }
+
+    function updatePaTrainingLevelDrag(drag, point, layout) {
+        const trade = paTrainingSelectedTeachingCase();
+        if (!trade || !layout.priceAtY) return;
+        const nextPrice = layout.priceAtY(point.y);
+        const long = trade.direction !== 'short';
+        const entry = drag.level === 'entryPrice' ? nextPrice : Number(trade.entryPrice);
+        const sl = drag.level === 'initialStop' ? nextPrice : Number(trade.initialStop);
+        const tp1 = drag.level === 'targetPrice' ? nextPrice : Number(trade.targetPrice);
+        const risk = Math.abs(entry - sl);
+        if (![entry, sl, tp1].every(Number.isFinite) || risk <= 0) return;
+        if (long ? !(sl < entry && entry < tp1) : !(tp1 < entry && entry < sl)) return;
+        trade[drag.level] = nextPrice;
+        trade.riskR = Math.abs(entry - sl);
+        trade.rr = Math.abs(tp1 - entry) / trade.riskR;
+        trade.rrTarget2 = Math.abs(tp2 - entry) / trade.riskR;
+        trade.corrected = true;
+        trade.resultStatus = 'not_recalculated';
+        trade.exitType = trade.exitPrice = trade.netR = null;
+        drag.changed = true;
+    }
+
     function handleChartMouseDown(event) {
         if (!state.activeMarketData || !state.chartView.lastLayout) return;
         hideChartQuickMenu();
@@ -11484,6 +12061,17 @@
         }
 
         if (event.button !== 0) return;
+
+        if (!isAxis && (tool === 'cursor' || tool === 'select')) {
+            const paLevel = findPaTrainingLevelAtPoint(point, layout);
+            if (paLevel) {
+                const trade = paTrainingSelectedTeachingCase();
+                trade.originalTrade ||= paTrainingTradeSnapshot(trade);
+                state.chartView.drag = { mode: 'edit-pa-level', level: paLevel, x: point.x, y: point.y, original: Number(trade[paLevel === 'entryPrice' ? 'entryPrice' : paLevel]) };
+                $('#marketChart').style.cursor = 'ns-resize';
+                return;
+            }
+        }
 
         if (!isAxis && (tool === 'cursor' || tool === 'select')) {
             const editableDrawing = findEditableDrawing(point, layout);
@@ -11537,12 +12125,15 @@
         const drag = state.chartView.drag;
 
         if (!drag) {
+            const paLevel = point.x < layout.axisArea.left ? findPaTrainingLevelAtPoint(point, layout) : '';
             const editablePosition = state.chartView.activeTool !== 'erase' && point.x < layout.axisArea.left
                 ? (findEditablePosition(point, layout) || findEditableDrawing(point, layout))
                 : null;
             canvas.style.cursor = point.x >= layout.axisArea.left
                 ? 'ns-resize'
-                : editablePosition
+                : paLevel
+                  ? 'ns-resize'
+                  : editablePosition
                   ? drawingEditCursor(editablePosition.handle)
                 : state.chartView.activeTool === 'cursor'
                   ? 'grab'
@@ -11553,7 +12144,8 @@
                 updateDraftDrawing(point, layout, event);
                 return;
             }
-            renderChartTooltip(point, layout);
+            if (state.chartView.candleInfoVisible) renderChartTooltip(point, layout);
+            else hideChartTooltip();
             drawMarketChart(state.activeMarketData);
             return;
         }
@@ -11579,12 +12171,29 @@
             updatePositionDrawingDrag(drag, point, layout);
         } else if (drag.mode === 'edit-drawing') {
             updateGenericDrawingDrag(drag, point, layout);
+        } else if (drag.mode === 'edit-pa-level') {
+            updatePaTrainingLevelDrag(drag, point, layout);
+            drawPaTrainingLevelOverlay(layout);
+            return;
         }
         drawMarketChart(state.activeMarketData);
     }
 
     function handleChartMouseUp(event) {
         const drag = state.chartView.drag;
+        if (drag?.mode === 'edit-pa-level' && state.activeMarketData) {
+            const trade = paTrainingSelectedTeachingCase();
+            const changes = trade ? {
+                zoneLow: Number(trade.zoneLow ?? trade.zone?.low), zoneHigh: Number(trade.zoneHigh ?? trade.zone?.high),
+                entryPrice: Number(trade.entryPrice), initialStop: Number(trade.initialStop),
+                targetPrice: Number(trade.targetPrice), targetPrice2: Number(trade.targetPrice2 || (trade.direction === 'short' ? Number(trade.entryPrice) - Math.abs(Number(trade.entryPrice) - Number(trade.initialStop)) * 2 : Number(trade.entryPrice) + Math.abs(Number(trade.entryPrice) - Number(trade.initialStop)) * 2)),
+            } : null;
+            state.chartView.drag = null;
+            const canvas = $('#marketChart');
+            if (canvas) canvas.style.cursor = state.chartView.activeTool === 'cursor' ? 'grab' : 'crosshair';
+            if (drag.changed && changes && Number.isFinite(changes.zoneLow) && Number.isFinite(changes.zoneHigh)) applyPaCaseCorrection(changes, `Kéo chỉnh ${drag.level} trên biểu đồ`);
+            return;
+        }
         if ((drag?.mode === 'select' || drag?.mode === 'zoom-box') && state.activeMarketData && state.chartView.lastLayout) {
             const layout = state.chartView.lastLayout;
             const canvas = $('#marketChart');
@@ -11600,6 +12209,22 @@
                 state.chartView.selectionBox = null;
                 openChartQuickMenu(point);
             } else {
+                if (drag.mode === 'select' && moved >= 8 && state.chartView.selectionBox?.start && state.chartView.selectionBox?.end) {
+                    const firstPoint = state.chartView.selectionBox.start;
+                    const lastPoint = state.chartView.selectionBox.end;
+                    const firstTime = Number(firstPoint.time ?? timeToSeconds(firstPoint.time_iso));
+                    const lastTime = Number(lastPoint.time ?? timeToSeconds(lastPoint.time_iso));
+                    if (Number.isFinite(firstTime) && Number.isFinite(lastTime)) {
+                        state.chartView.timeframeSelection = {
+                            startTime: Math.min(firstTime, lastTime),
+                            endTime: Math.max(firstTime, lastTime),
+                            startPrice: Math.min(Number(firstPoint.price), Number(lastPoint.price)),
+                            endPrice: Math.max(Number(firstPoint.price), Number(lastPoint.price)),
+                            symbol: state.activeMarketData.symbol,
+                        };
+                        updateChartSelectionJumpButtons();
+                    }
+                }
                 state.chartView.selectedDrawingIds = selectDrawingsInBox(state.chartView.selectionBox, layout);
                 state.chartView.selectionBox = null;
             }
@@ -11772,7 +12397,22 @@
     function handleChartQuickMenuAction(action) {
         const quickMenu = state.chartView.quickMenu;
         const layout = state.chartView.lastLayout;
-        if (action === 'cursor') {
+        if (action === 'fit-case') {
+            focusPaTrainingTeachingCaseWindow(paTrainingSelectedTeachingCase(), true);
+        } else if (action === 'fit-full') {
+            fitFullChart();
+        } else if (action === 'fit-horizontal') {
+            fitChartHorizontally();
+        } else if (action === 'fit-vertical') {
+            fitChartVertically();
+        } else if (action === 'toggle-candle-info') {
+            state.chartView.candleInfoVisible = !state.chartView.candleInfoVisible;
+            if (state.chartView.candleInfoVisible && quickMenu && layout) {
+                renderChartTooltip(quickMenu.point, layout);
+            } else {
+                hideChartTooltip();
+            }
+        } else if (action === 'cursor') {
             setChartTool('cursor');
         } else if (action === 'select') {
             setChartTool('select');
@@ -11833,6 +12473,13 @@
         menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
         const hasSelection = !!(state.chartView.selectedDrawingIds || []).length;
+        const fitCaseButton = menu.querySelector('[data-chart-menu-action="fit-case"]');
+        if (fitCaseButton) fitCaseButton.disabled = state.activeTab !== 'pa-training' || !paTrainingSelectedTeachingCase();
+        const candleInfoButton = menu.querySelector('[data-chart-menu-action="toggle-candle-info"]');
+        if (candleInfoButton) {
+            candleInfoButton.textContent = state.chartView.candleInfoVisible ? 'Ẩn thông tin nến' : 'Hiện thông tin nến';
+            candleInfoButton.setAttribute('aria-pressed', String(state.chartView.candleInfoVisible));
+        }
         ['duplicate-selected', 'edit-text', 'toggle-lock', 'toggle-hidden', 'delete-selected'].forEach((action) => {
             const button = menu.querySelector(`[data-chart-menu-action="${action}"]`);
             if (button) button.disabled = !hasSelection;
@@ -13183,6 +13830,25 @@
         });
         return best;
     }
+
+    function chartIndexAtOrBeforeTime(bars, value, fallback = 0) {
+        const ts = timeToSeconds(value);
+        if (!Number.isFinite(ts) || !bars.length) return Number.isFinite(Number(fallback)) ? Number(fallback) : 0;
+        let low = 0;
+        let high = bars.length - 1;
+        let best = 0;
+        while (low <= high) {
+            const mid = (low + high) >> 1;
+            const barTime = barTimeValue(bars[mid]);
+            if (!Number.isFinite(barTime) || barTime <= ts) {
+                best = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return best;
+    }
     function buildChartIndicators(bars) {
         const closes = bars.map((bar) => Number(bar.close));
         const highs = bars.map((bar) => Number(bar.high));
@@ -14227,6 +14893,7 @@
             chartType: state.chartView.chartType,
             timeframe: state.chartView.timeframe,
             indicators: state.chartView.indicators,
+            teachingLevelMarkersVisible: state.chartView.teachingLevelMarkersVisible !== false,
             overlays: state.chartView.overlays,
             barsOnScreen: state.chartView.barsOnScreen,
             rightOffset: state.chartView.rightOffset,
@@ -14624,6 +15291,9 @@
     function replayCutoffIndex(data) {
         const bars = data?.bars || [];
         if (!state.chartView.replay.enabled) return Number.POSITIVE_INFINITY;
+        if (state.chartView.replay.time !== null && Number.isFinite(Number(state.chartView.replay.time))) {
+            return chartIndexAtOrBeforeTime(bars, Number(state.chartView.replay.time), state.chartView.replay.index);
+        }
         return clamp(Math.round(state.chartView.replay.index || 0), 0, Math.max(0, bars.length - 1));
     }
 
@@ -14632,7 +15302,13 @@
         if (!bars.length) return;
         state.chartView.replay.enabled = true;
         state.chartView.replay.index = clamp(Math.round(index), 0, bars.length - 1);
-        if (follow) centerChartOnIndex(state.chartView.replay.index);
+        state.chartView.replay.time = barTimeValue(bars[state.chartView.replay.index]) + timeframeSeconds(state.activeMarketData?.timeframe) - 1;
+        if (state.activeTab === 'pa-training') {
+            persistPaWorkspace({ replayIndex: state.chartView.replay.index, replayEnabled: true });
+        }
+        // Playback advances the hidden-data boundary without changing the user's
+        // chart viewport. Explicit navigation controls may still center it.
+        if (follow === true && !state.chartView.replay.playing) centerChartOnIndex(state.chartView.replay.index);
         drawMarketChart(state.activeMarketData);
     }
 
@@ -14656,7 +15332,13 @@
         const bars = state.activeMarketData?.bars || [];
         if (!bars.length) return;
         replay.enabled = true;
-        if (!Number.isFinite(replay.index) || replay.index >= bars.length - 1) replay.index = 0;
+        if (!Number.isFinite(replay.index) || replay.index >= bars.length - 1) {
+            replay.index = 0;
+            replay.time = null;
+        }
+        if (replay.time === null || !Number.isFinite(Number(replay.time))) {
+            replay.time = barTimeValue(bars[replay.index]) + timeframeSeconds(state.activeMarketData?.timeframe) - 1;
+        }
         replay.playing = true;
         replay.timer = setInterval(() => {
             const step = Math.max(1, Math.round(replay.speed || 1));
@@ -14665,7 +15347,7 @@
                 drawMarketChart(state.activeMarketData);
                 return;
             }
-            setChartReplayIndex(Math.min(bars.length - 1, replay.index + step), true);
+            setChartReplayIndex(Math.min(bars.length - 1, replay.index + step), false);
         }, Math.max(80, 520 / Math.max(1, replay.speed || 1)));
         drawMarketChart(state.activeMarketData);
     }
@@ -14678,6 +15360,7 @@
         if (reset) {
             replay.enabled = false;
             replay.index = 0;
+            replay.time = null;
         }
         renderReplayControls(state.activeMarketData);
     }
@@ -14698,6 +15381,7 @@
         showToast(`Tốc độ chạy nến: ${next}x`);
     }
     function renderReplayControls(data) {
+        syncPaWorkspaceUi(data);
         const bars = data?.bars || [];
         const range = $('#chartReplayRange');
         const label = $('#chartReplayLabel');
@@ -14862,6 +15546,10 @@
         if (Number.isFinite(Number(bar.time))) return Number(bar.time);
         const date = new Date(bar.time_iso || bar.time);
         return Number.isNaN(date.getTime()) ? NaN : Math.floor(date.getTime() / 1000);
+    }
+
+    function timeframeSeconds(timeframe) {
+        return ({ M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400, W1: 604800, MN1: 2592000 })[String(timeframe || '').toUpperCase()] || 900;
     }
 
     function bodyIsDark() {
@@ -15090,8 +15778,17 @@
         $$('[data-pa-case-decision]').forEach((button) => {
             button.addEventListener('click', (event) => {
                 runPaActionButtonClick(button, event, () => {
+                    if (button.dataset.paCaseDecision === 'weak_case') {
+                        activatePaTrainingLevelDrag();
+                        return;
+                    }
                     savePaTrainingCaseDecision(button.dataset.paCaseDecision, button.dataset.paCaseLabel || button.dataset.paCaseDecision).catch((e) => showToast(e.message));
                 });
+            });
+        });
+        $$('[data-pa-case-skip]').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                runPaActionButtonClick(button, event, skipPaTrainingCurrentCase);
             });
         });
         $$('[data-pa-lesson-save]').forEach((button) => {
@@ -15194,6 +15891,93 @@
         updateMt5BarsHint();
     }
 
+    function clampPaReplayFloatingPanel() {
+        const panel = $('#chartReplayFloatingPanel');
+        if (!panel || panel.hidden) return;
+        const canvasWrap = panel.closest('.chart-canvas-wrap');
+        if (!canvasWrap) return;
+        const wrapRect = canvasWrap.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
+        const maxLeft = Math.max(8, wrapRect.width - panelRect.width - 8);
+        const maxTop = Math.max(8, wrapRect.height - panelRect.height - 8);
+        const currentLeft = Number.parseFloat(panel.style.left || '16');
+        const currentTop = Number.parseFloat(panel.style.top || '16');
+        panel.style.left = `${Math.min(Math.max(8, currentLeft), maxLeft)}px`;
+        panel.style.top = `${Math.min(Math.max(8, currentTop), maxTop)}px`;
+    }
+
+    function setPaReplayPanelOpen(open) {
+        const panel = $('#chartReplayFloatingPanel');
+        const toggle = $('#chartReplayPanelToggleBtn');
+        if (!panel) return;
+        panel.hidden = !open;
+        panel.classList.toggle('is-open', open);
+        if (toggle) {
+            toggle.classList.toggle('is-active', open);
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        if (open) {
+            requestAnimationFrame(clampPaReplayFloatingPanel);
+        }
+    }
+
+    function bindPaReplayFloatingPanel() {
+        const panel = $('#chartReplayFloatingPanel');
+        const handle = $('#chartReplayDragHandle');
+        const toggle = $('#chartReplayPanelToggleBtn');
+        const close = $('#chartReplayPanelCloseBtn');
+        if (!panel || !handle || !toggle || panel.dataset.paReplayBound === '1') return;
+        panel.dataset.paReplayBound = '1';
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.addEventListener('click', () => setPaReplayPanelOpen(panel.hidden));
+        close?.addEventListener('click', () => setPaReplayPanelOpen(false));
+        window.addEventListener('resize', clampPaReplayFloatingPanel);
+
+        let drag = null;
+        handle.addEventListener('pointerdown', (event) => {
+            if (event.target.closest('button')) return;
+            const canvasWrap = panel.closest('.chart-canvas-wrap');
+            if (!canvasWrap) return;
+            const wrapRect = canvasWrap.getBoundingClientRect();
+            const panelRect = panel.getBoundingClientRect();
+            drag = {
+                pointerId: event.pointerId,
+                offsetX: event.clientX - panelRect.left,
+                offsetY: event.clientY - panelRect.top,
+                wrapRect,
+            };
+            panel.classList.add('is-dragging');
+            handle.setPointerCapture(event.pointerId);
+        });
+
+        handle.addEventListener('pointermove', (event) => {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            const canvasWrap = panel.closest('.chart-canvas-wrap');
+            if (!canvasWrap) return;
+            const wrapRect = canvasWrap.getBoundingClientRect();
+            const panelRect = panel.getBoundingClientRect();
+            const maxLeft = Math.max(8, wrapRect.width - panelRect.width - 8);
+            const maxTop = Math.max(8, wrapRect.height - panelRect.height - 8);
+            const nextLeft = Math.min(Math.max(8, event.clientX - wrapRect.left - drag.offsetX), maxLeft);
+            const nextTop = Math.min(Math.max(8, event.clientY - wrapRect.top - drag.offsetY), maxTop);
+            panel.style.left = `${nextLeft}px`;
+            panel.style.top = `${nextTop}px`;
+        });
+
+        const stopDrag = (event) => {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            drag = null;
+            panel.classList.remove('is-dragging');
+            try {
+                handle.releasePointerCapture(event.pointerId);
+            } catch (error) {
+                // Pointer capture may already be released by the browser.
+            }
+        };
+        handle.addEventListener('pointerup', stopDrag);
+        handle.addEventListener('pointercancel', stopDrag);
+    }
+
     function preparePriceActionChartUi() {
         const controls = $('.chart-controls');
         const drawingToolbar = $('.drawing-toolbar');
@@ -15219,11 +16003,13 @@
             const element = document.getElementById(id);
             if (element) controls.appendChild(element);
         });
-        const replayGroup = featureBar.querySelector('.replay-group');
-        if (replayGroup && !controls.contains(replayGroup)) {
-            replayGroup.classList.add('pa-replay-inline');
-            controls.appendChild(replayGroup);
+        const replayDock = $('#chartReplayFloatingBody');
+        const replayGroup = featureBar.querySelector('.replay-group') || document.querySelector('.replay-group');
+        if (replayGroup && replayDock && !replayDock.contains(replayGroup)) {
+            replayGroup.classList.add('pa-replay-inline', 'pa-replay-floating-controls');
+            replayDock.appendChild(replayGroup);
         }
+        bindPaReplayFloatingPanel();
         featureBar.hidden = true;
 
         const rectTool = drawingToolbar.querySelector('[data-chart-tool="rect"]');
@@ -16131,8 +16917,148 @@
         };
     }
 
+    function syncPaWorkspaceUi(data = state.activeMarketData) {
+        if (!paWorkspaceUi) return;
+        const bars = data?.bars || [];
+        const replay = state.chartView.replay;
+        const bar = replay.enabled ? bars[clamp(replay.index || 0, 0, Math.max(0, bars.length - 1))] : bars[bars.length - 1];
+        paWorkspaceUi.sync({
+            symbol: data?.symbol || state.paTrainingSymbol,
+            timeframe: data?.timeframe || state.paTrainingChartTimeframe || 'H4',
+            price: bar ? formatPrice(bar.close, data.symbol) : '',
+            hasData: bars.length > 0,
+            hasCase: !!(paTrainingSelectedTeachingCase() || paTrainingSelectedZone()),
+            loading: state.paTrainingLoading || state.paTrainingCaseLoading,
+            tool: state.chartView.activeTool,
+            zone: state.chartView.pendingZoneType,
+            playing: replay.playing,
+            indicators: state.chartView.indicators,
+        });
+    }
+
+    function runPaWorkspaceAction(action) {
+        if (action === 'skip-case') { skipPaTrainingCurrentCase(); return; }
+        if (action === 'saved-cases') { paCaseManager?.history(); return; }
+        if (action === 'edit-case') { paCaseManager?.edit(); return; }
+        if (action === 'nearby-zones') {
+            paNearbyZonesVisible = !paNearbyZonesVisible;
+            if ($('#paNearbyZonesNote')) $('#paNearbyZonesNote').hidden = !paNearbyZonesVisible;
+            document.querySelectorAll('[data-pa-command="nearby-zones"]').forEach(button => button.setAttribute('aria-pressed', String(paNearbyZonesVisible)));
+            if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+            return;
+        }
+        if (action === 'trade-markers') {
+            state.chartView.teachingLevelMarkersVisible = state.chartView.teachingLevelMarkersVisible === false;
+            if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+            syncPaWorkspaceUi();
+            return;
+        }
+        if (action.startsWith('tool:')) {
+            setChartTool(action.slice(5));
+            syncPaWorkspaceUi();
+            return;
+        }
+        if (action.startsWith('zone:')) {
+            setChartZone(action.slice(5));
+            syncPaWorkspaceUi();
+            return;
+        }
+        const controls = {
+            refresh: 'paTrainingRefreshBtn', 'new-case': 'paTrainingLoadZonesBtn',
+            'start-cases': 'paTrainingStartCasesBtn', previous: 'chartReplayBackBtn',
+            play: 'chartReplayPlayBtn', next: 'chartReplayStepBtn', replay: 'chartReplayPanelToggleBtn',
+            undo: 'chartUndoBtn', redo: 'chartRedoBtn', delete: 'chartDeleteSelectedBtn',
+            clear: 'chartClearDrawingsBtn', fullscreen: 'chartFullscreenBtn',
+            first: 'chartJumpStartBtn', last: 'chartJumpEndBtn', fit: 'chartFitBtn',
+            'fit-x': 'chartFitHorizontalBtn', 'fit-y': 'chartFitVerticalBtn',
+            theme: 'chartThemeBtn', screenshot: 'chartScreenshotBtn',
+        };
+        if (controls[action]) document.getElementById(controls[action])?.click();
+        syncPaWorkspaceUi();
+    }
+
+    function applyPaCaseCorrection(changes, note) {
+        const trade = paTrainingSelectedTrade();
+        if (!trade) return;
+        trade.originalTrade ||= paTrainingTradeSnapshot(trade);
+        Object.assign(trade, changes, {corrected: true, correctionNote: note, resultStatus: 'not_recalculated'});
+        trade.zone = {...(trade.zone || {}), low: changes.zoneLow, high: changes.zoneHigh};
+        trade.rr = Math.abs(changes.targetPrice - changes.entryPrice) / Math.abs(changes.entryPrice - changes.initialStop);
+        trade.rrTarget2 = changes.targetPrice2 ? Math.abs(changes.targetPrice2 - changes.entryPrice) / Math.abs(changes.entryPrice - changes.initialStop) : null;
+        trade.riskR = Math.abs(changes.entryPrice - changes.initialStop);
+        for (const key of ['netR', 'pnlUsd', 'exitPrice', 'exitTime', 'exitIndex', 'exitType', 'mfeR', 'maeR', 'holdingBars']) trade[key] = null;
+        state.paTrainingSessionDrafts[paTrainingSessionKey(trade, paTrainingSelectedZone())] = {decision: 'adjusted_case', label: 'Đã điều chỉnh setup', note, updatedAt: new Date().toISOString()};
+        renderPaTraining();
+        renderPaTrainingSessionStrip();
+        if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+    }
+
+    async function openPaSavedCase(review) {
+        const snapshot = review.snapshot?.trade ? review.snapshot : review.snapshot?.summary;
+        if (!snapshot?.trade) throw new Error('Ca này không có snapshot lệnh.');
+        const trade = {...snapshot.trade, zone: snapshot.zone || snapshot.trade.zone, originalTrade: snapshot.originalTrade || snapshot.trade, savedReviewId: review.id, savedReviewUpdatedAt: review.updatedAt || review.createdAt, isTeachingCase: true, review};
+        state.paTrainingSymbol = trade.symbol;
+        const index = state.paTrainingTradeCases.findIndex(item => item.id === trade.id);
+        if (index < 0) state.paTrainingTradeCases.unshift(trade); else state.paTrainingTradeCases[index] = trade;
+        state.paTrainingSelectedCaseId = trade.id;
+        state.paTrainingSelectedZoneId = trade.zoneId || trade.zone?.id || '';
+        state.paTrainingZoneFilter = 'all';
+        await focusPaTrainingSelectedCase(snapshot.chart?.timeframe || snapshot.session?.chart?.timeframe || trade.timeframe || 'H4');
+        const chart = snapshot.session?.chart;
+        if (chart && state.activeMarketData && sameSymbol(trade.symbol, state.activeMarketData.symbol)) {
+            state.chartView.indicators = {...state.chartView.indicators, ...chart.indicators};
+            // Restore saved drawings without discarding other drawings made since the save.
+            const key = chartDrawingKey(state.activeMarketData);
+            const existing = getChartDrawings(state.activeMarketData);
+            const merged = new Map(existing.map(item => [item.id, item]));
+            (chart.drawings || []).forEach(item => merged.set(item.id, JSON.parse(JSON.stringify(item))));
+            state.chartView.drawings[key] = [...merged.values()];
+        }
+        state.paTrainingSessionDrafts[paTrainingSessionKey(trade, trade.zone)] = {decision: review.decision || 'session_note', label: review.label, note: review.note};
+        renderPaTraining();
+        renderPaTrainingSessionStrip();
+        if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+    }
+
     preparePriceActionChartUi();
     bindEvents();
+    paCaseManager = window.PaCaseManager?.init({
+        api, toast: showToast, trade: paTrainingSelectedTrade, apply: applyPaCaseCorrection, open: openPaSavedCase,
+        selectedZone: () => {
+            const drawing = selectedDrawingObjects().find(item => item.type === 'rect');
+            if (!drawing) return null;
+            const points = drawing.points || [];
+            const prices = points.map(point => Number(point.price)).filter(Number.isFinite);
+            return prices.length >= 2 ? {low: Math.min(...prices), high: Math.max(...prices)} : null;
+        },
+        memory: memory => { state.paTrainingMemory = normalizePaTrainingMemory(memory); renderPaTrainingStats(); renderPaTrainingRecentFeedback(); },
+        updated: review => {
+            const current = paTrainingSelectedTeachingCase();
+            if (current?.savedReviewId === review?.id) {
+                const snapshot = review.snapshot;
+                Object.assign(current, snapshot.trade, {zone: snapshot.zone, originalTrade: snapshot.originalTrade, savedReviewUpdatedAt: review.updatedAt, review});
+                state.paTrainingSessionDrafts[paTrainingSessionKey(current, current.zone)] = {decision: review.decision, label: review.label, note: review.note};
+                renderPaTraining();
+                if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+            }
+        },
+        changed: (review, action) => {
+            state.paTrainingTradeCases.forEach(trade => {
+                if (trade.review?.id !== review.id && trade.savedReviewId !== review.id) return;
+                trade.review = action === 'delete' ? null : review;
+                if (action === 'delete') { delete trade.savedReviewId; delete trade.savedReviewUpdatedAt; }
+            });
+            renderPaTraining();
+        },
+    });
+    paWorkspaceUi = window.PaWorkspace?.init({
+        action: runPaWorkspaceAction,
+        symbol: (symbol) => changePaTrainingSymbol(symbol),
+        timeframe: (timeframe) => changePaWorkspaceTimeframe(timeframe).catch((error) => showToast(error.message)),
+        resize: () => {
+            if (state.activeTab === 'pa-training' && state.activeMarketData) drawMarketChart(state.activeMarketData);
+        },
+    });
     bootstrap().catch((error) => {
         setStatus('Lỗi');
         showToast(error.message);

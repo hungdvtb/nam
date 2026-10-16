@@ -5,11 +5,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20261011-pa-toolbar-tight">
+    <link rel="stylesheet" href="assets/styles.css?v=20261015-case-drag-overlay">
+    <link rel="stylesheet" href="assets/pa-workspace.css?v=20261015-clear-skip-case-button">
 </head>
 <body>
     <div class="app-shell">
-        <aside class="sidebar">
+        <div class="navigation-drawer" id="navigationDrawer">
+        <button class="navigation-reveal" id="navigationReveal" type="button" aria-label="Mở menu điều hướng" title="Mở menu điều hướng" aria-expanded="false" aria-controls="appSidebar"><span aria-hidden="true">›</span></button>
+        <aside class="sidebar" id="appSidebar" aria-label="Menu chính" inert>
             <div class="brand">
                 <span class="brand-mark">AT</span>
                 <div>
@@ -115,6 +118,7 @@
             </div>
         </aside>
 
+        </div>
         <main class="main">
             <section class="topbar">
                 <div>
@@ -1322,8 +1326,8 @@
                             </label>
                             <label class="field">
                                 <span>S&#7889; n&#7871;n M15 m&#7909;c ti&#234;u</span>
-                                <input id="mt5Bars" type="number" value="1000000" min="50" max="1000000">
-                                <small id="mt5BarsHint">M15 l&#224; m&#7889;c ch&#237;nh. M&#7863;c &#273;&#7883;nh xin t&#7889;i &#273;a 1,000,000 M15; H4 t&#7921; quy &#273;&#7893;i = M15 / 16.</small>
+                                <input id="mt5Bars" type="number" value="100000" min="50" max="100000">
+                                <small id="mt5BarsHint">M15 l&#224; m&#7889;c ch&#237;nh, t&#7889;i &#273;a 100,000 n&#7871;n. C&#225;c khung kh&#225;c t&#7921; quy &#273;&#7893;i theo c&#249;ng kho&#7843;ng th&#7901;i gian.</small>
                             </label>
                             <label class="field">
                                 <span>Khung thời gian</span>
@@ -1371,6 +1375,8 @@
                             <div class="chart-timeframe-controls" aria-label="Khung thời gian">
                                 <button class="chart-control chart-timeframe-main is-active" data-chart-timeframe="H4" type="button">H4</button>
                                 <button class="chart-control chart-timeframe-main" data-chart-timeframe="M15" type="button">M15</button>
+                                <button class="chart-control chart-timeframe-jump" id="chartSelectionToM15Btn" type="button" title="Dùng công cụ Mũi tên / chọn (□) kéo khoanh vùng trước, rồi bấm để mở đúng khoảng thời gian trên M15">Vùng → M15</button>
+                                <button class="chart-control chart-timeframe-jump" id="chartSelectionToH1Btn" type="button" title="Dùng công cụ Mũi tên / chọn (□) kéo khoanh vùng trước, rồi bấm để mở đúng khoảng thời gian trên H1">Vùng → H1</button>
                                 <div class="chart-timeframe-more" id="chartTimeframeMore">
                                     <button class="chart-control" id="chartTimeframeMoreToggle" type="button" title="Mở các khung thời gian khác" aria-expanded="false" aria-controls="chartTimeframeMenu">Khác <span aria-hidden="true">⌄</span></button>
                                     <div class="chart-timeframe-menu" id="chartTimeframeMenu" aria-label="Khung thời gian khác" hidden>
@@ -1393,6 +1399,7 @@
                                 <button class="chart-control" id="chartThemeBtn" type="button" title="Bật/tắt nền tối"><span class="chart-label-full">Tối</span><span class="chart-label-compact" aria-hidden="true">◐</span></button>
                                 <button class="chart-control" id="chartFullscreenBtn" type="button" title="Phóng to biểu đồ"><span class="chart-label-full">Full</span><span class="chart-label-compact" aria-hidden="true">⛶</span></button>
                             </div>
+                            <button class="chart-control pa-replay-toggle-control" id="chartReplayPanelToggleBtn" type="button" title="Bật/tắt thanh tua nến">▣ Tua nến</button>
                         </div>
                     </div>
                     <div class="chart-feature-bar" id="chartFeatureBar">
@@ -1459,26 +1466,36 @@
                             <button class="chart-control" id="chartNextTradeBtn" type="button">Lệnh sau</button>
                         </div>
                         <div class="chart-feature-group replay-group">
-                            <strong title="Chạy nến để backtest thủ công">Nến</strong>
-                            <div class="chart-replay-buttons" aria-label="Điều khiển chạy nến">
+                            <div class="replay-segment replay-navigation-segment">
+                                <strong class="replay-segment-label" title="Chạy nến để backtest thủ công"><span aria-hidden="true">◷</span>Nến</strong>
+                                <div class="chart-replay-buttons" aria-label="Điều khiển chạy nến">
                                 <button class="chart-control" id="chartReplayBackBtn" type="button" title="Lùi một nến">‹</button>
                                 <button class="chart-control" id="chartReplayPlayBtn" type="button" title="Cho nến chạy / tạm dừng">▶</button>
                                 <button class="chart-control" id="chartReplayStepBtn" type="button" title="Tiến một nến">›</button>
+                                </div>
                             </div>
-                            <div class="chart-replay-speed" aria-label="Tốc độ chạy nến">
-                                <button class="chart-control" id="chartReplaySlowerBtn" type="button" title="Chạy chậm hơn">−</button>
-                                <select id="chartReplaySpeed" aria-label="Tốc độ phát lại">
-                                    <option value="0.5">0.5x</option>
-                                    <option value="1">1x</option>
-                                    <option value="2">2x</option>
-                                    <option value="4">4x</option>
-                                    <option value="8">8x</option>
-                                    <option value="16">16x</option>
-                                </select>
-                                <button class="chart-control" id="chartReplayFasterBtn" type="button" title="Chạy nhanh hơn">+</button>
+                            <div class="replay-segment replay-speed-segment">
+                                <strong class="replay-segment-label"><span aria-hidden="true">⚡</span>Tốc độ</strong>
+                                <div class="chart-replay-speed" aria-label="Tốc độ chạy nến">
+                                    <button class="chart-control" id="chartReplaySlowerBtn" type="button" title="Chạy chậm hơn">−</button>
+                                    <select id="chartReplaySpeed" aria-label="Tốc độ phát lại">
+                                        <option value="0.5">0.5x</option>
+                                        <option value="1">1x</option>
+                                        <option value="2">2x</option>
+                                        <option value="4">4x</option>
+                                        <option value="8">8x</option>
+                                        <option value="16">16x</option>
+                                    </select>
+                                    <button class="chart-control" id="chartReplayFasterBtn" type="button" title="Chạy nhanh hơn">+</button>
+                                </div>
                             </div>
-                            <input id="chartReplayRange" type="range" min="0" max="0" value="0">
-                            <span id="chartReplayLabel">Chưa có dữ liệu</span>
+                            <div class="replay-segment replay-progress-segment">
+                                <strong class="replay-segment-label"><span aria-hidden="true">▰</span>Tiến độ</strong>
+                                <div class="replay-progress-track">
+                                    <input id="chartReplayRange" type="range" min="0" max="0" value="0" aria-label="Vị trí nến đang xem">
+                                    <span id="chartReplayLabel">Chưa có dữ liệu</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="chart-feature-group">
                             <strong>Bố cục</strong>
@@ -1583,6 +1600,15 @@
                             <canvas id="marketChart" width="1200" height="560"></canvas>
                             <div class="chart-tooltip" id="chartTooltip"></div>
                             <div class="favorite-toolbar" id="chartFavoriteToolbar"></div>
+                            <div class="pa-replay-floating-panel" id="chartReplayFloatingPanel" hidden>
+                                <div class="pa-replay-floating-head" id="chartReplayDragHandle">
+                                    <span class="pa-replay-grip" aria-hidden="true">⋮⋮</span>
+                                    <strong>Tua nến backtest</strong>
+                                    <small>Kéo để đặt vị trí</small>
+                                    <button class="chart-control" id="chartReplayPanelCloseBtn" type="button" title="Thu gọn thanh tua nến">×</button>
+                                </div>
+                                <div class="pa-replay-floating-body" id="chartReplayFloatingBody"></div>
+                            </div>
                             <div class="floating-style-toolbar" id="chartFloatingToolbar" hidden>
                                 <span class="floating-toolbar-grip" id="drawingToolbarDragHandle" title="Kéo thanh công cụ" aria-label="Kéo thanh công cụ">⋮⋮</span>
                                 <input id="drawingColorInput" type="color" value="#1f6feb" title="Màu">
@@ -1617,6 +1643,11 @@
                                 <button class="chart-control" id="drawingSaveStyleBtn" type="button">Lưu kiểu</button>
                             </div>
                             <div class="chart-quick-menu" id="chartQuickMenu" hidden>
+                                <button type="button" class="chart-quick-menu-priority" data-chart-menu-action="fit-full">⤢ Căn vừa biểu đồ</button>
+                                <button type="button" class="chart-quick-menu-priority" data-chart-menu-action="fit-case">⌖ Zoom vùng ca đang chọn</button>
+                                <button type="button" class="chart-quick-menu-priority" data-chart-menu-action="fit-horizontal">↔ Căn ngang</button>
+                                <button type="button" class="chart-quick-menu-priority is-section-end" data-chart-menu-action="fit-vertical">↕ Căn dọc</button>
+                                <button type="button" class="chart-quick-menu-priority is-section-end" data-chart-menu-action="toggle-candle-info">Hiện thông tin nến</button>
                                 <button type="button" data-chart-menu-action="cursor">Con trỏ / kéo biểu đồ</button>
                                 <button type="button" data-chart-menu-action="select">Quét chọn</button>
                                 <button type="button" data-chart-menu-action="copy-selected">Sao chép hình vẽ</button>
@@ -1755,8 +1786,8 @@
 
 
             <section class="tab-panel" id="tab-pa-training">
-                <section class="panel pa-coach-shell pa-coach-compact">
-                    <div class="pa-coach-toolbar">
+                <section class="panel pa-coach-shell pa-coach-compact pa-workspace-v2">
+                    <div class="pa-coach-toolbar" id="paLegacyControls" hidden>
                         <div class="pa-coach-title">
                             <strong>Dạy PA</strong>
                             <span>Chart trái · AI phải</span>
@@ -1789,17 +1820,41 @@
                         </label>
                         <div class="pa-compact-actions">
                             <button class="button secondary pa-icon-button" id="paTrainingRefreshBtn" title="Tải lại bộ nhớ" aria-label="Tải lại bộ nhớ" type="button">↻</button>
+                            <label class="pa-case-count-control" title="Số ca cần tìm"><span>Ca</span><select id="paTrainingCaseCount" aria-label="Số ca cần tạo"><option value="1" selected>1</option><option value="5">5</option><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
                             <button class="button" id="paTrainingLoadZonesBtn" type="button">Tạo ca</button>
                             <button class="button secondary" id="paTrainingStartCasesBtn" type="button">Bắt đầu</button>
                             <div class="segmented-control pa-compact-segments" role="tablist" aria-label="Bước dạy Price Action">
                                 <button class="segment-button is-active" id="paTrainingZonesBtn" type="button">Ca trade</button>
                             </div>
                         </div>
-                        <div class="notice pa-status-line is-compact" id="paTrainingStatus">Chọn cặp tiền, bấm Tạo ca để app lọc tình huống từ 10k nến rồi xử từng ca với AI.</div>
+                        <div class="notice pa-status-line is-compact" id="paTrainingStatus">Chọn số ca cần tìm rồi bấm Tạo ca; mặc định tìm 1 ca trade.</div>
                     </div>
 
                     <div class="pa-coach-workspace">
                         <section class="pa-chart-workbench">
+                            <header class="pa-workbench-header">
+                                <h2>Dạy PA</h2>
+                                <div class="pa-market-heading">
+                                    <span class="pa-market-dot" aria-hidden="true"></span>
+                                    <button class="pa-market-symbol-button" id="paWorkspaceSymbolButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="paSymbolPopover">
+                                        <strong id="paWorkspaceSymbol">—</strong>
+                                    </button>
+                                    <span class="pa-market-timeframe-switch" id="paWorkspaceTimeframe" aria-label="Đổi nhanh khung biểu đồ">
+                                        <button class="pa-market-timeframe-button" id="paWorkspaceTfH4" type="button" data-pa-header-timeframe="H4">H4</button>
+                                        <span aria-hidden="true">·</span>
+                                        <button class="pa-market-timeframe-button" id="paWorkspaceTfM15" type="button" data-pa-header-timeframe="M15">M15</button>
+                                    </span>
+                                </div>
+                                <strong class="pa-market-price" id="paWorkspacePrice">—</strong>
+                            </header>
+                            <div class="pa-toolbar-host">
+                                <div class="pa-icon-toolbar" id="paIconToolbar" role="toolbar" aria-label="Công cụ biểu đồ Dạy PA"></div>
+                                <section class="pa-tool-popover" id="paSymbolPopover" aria-label="Chọn cặp tiền" hidden></section>
+                                <section class="pa-tool-popover" id="paTimeframePopover" aria-label="Chọn khung thời gian" hidden></section>
+                                <section class="pa-tool-popover" id="paFilterPopover" aria-label="Lọc vùng giá" hidden></section>
+                                <section class="pa-tool-popover" id="paSettingsPopover" aria-label="Cài đặt biểu đồ" hidden></section>
+                                <section class="pa-tool-popover" id="paMorePopover" aria-label="Thêm công cụ" hidden></section>
+                            </div>
                             <div id="paTrainingChartMount" class="shared-market-chart-mount pa-training-chart-mount">
                                 <div class="notice">Chart TradingView từ mục Dữ liệu & MT5 sẽ hiện ở đây. Bấm Tải vùng H4 hoặc chọn cặp tiền để bắt đầu vẽ/chấm vùng.</div>
                             </div>
@@ -1808,18 +1863,22 @@
 
                         <aside class="pa-ai-side" id="paTrainingAiChatPanel">
                             <div class="pa-ai-side-head">
+                                <span class="pa-coach-avatar" data-pa-icon="sparkles" aria-hidden="true"></span>
                                 <div>
                                     <h2>AI Coach</h2>
-                                    <span>Trao đổi theo đúng ca trade đang chọn.</span>
+                                    <span>Trợ lý phân tích giao dịch</span>
                                 </div>
+                                <button class="pa-tool-button" id="paCoachMoreBtn" type="button" aria-label="Thêm hành động AI Coach" title="Thêm hành động AI Coach" aria-expanded="false" aria-controls="paCoachMoreActions" data-pa-icon="more"></button>
                             </div>
+                            <div class="pa-coach-context"><span class="pa-market-dot" aria-hidden="true"></span><div><strong id="paCoachContextSymbol">—</strong><span id="paCoachContextLabel">Chart đang xem</span></div></div>
                             <div class="pa-ai-zone-summary" id="paTrainingCoachZoneSummary"></div>
                             <div class="pa-ai-lessons" id="paTrainingRelevantLessons"></div>
                             <div class="pa-ai-chat-log" id="paTrainingChatLog" aria-live="polite"></div>
                             <div class="pa-ai-block-title" id="paTrainingChatComposerLabel">Soạn tin cho AI</div>
                             <div class="pa-ai-chat-input" aria-labelledby="paTrainingChatComposerLabel">
-                                <textarea id="paTrainingChatInput" rows="4" placeholder="Nhập câu muốn hỏi AI về ca đang chọn. VD: ca này sai vì vùng chưa rõ, entry vào sớm, SL chưa hợp lý..."></textarea>
-                                <button class="button" id="paTrainingChatSendBtn" type="button">Gửi AI</button>
+                                <button class="pa-tool-button pa-chat-attach" id="paChatChartContextBtn" type="button" title="Khoanh vùng biểu đồ để hỏi AI" aria-label="Khoanh vùng biểu đồ để hỏi AI" data-pa-icon="paperclip"></button>
+                                <textarea id="paTrainingChatInput" rows="2" aria-label="Hỏi AI về ca giao dịch" placeholder="Hỏi AI về ca giao dịch..."></textarea>
+                                <button class="button" id="paTrainingChatSendBtn" type="button" title="Gửi AI" aria-label="Gửi AI" data-pa-icon="send"></button>
                             </div>
                             <div class="pa-ai-session-strip" id="paTrainingSessionStrip"></div>
                             <div class="pa-ai-action-row" aria-label="Hành động nhanh AI Coach">
@@ -1831,33 +1890,23 @@
                                 <button class="button secondary pa-ai-quick-action" type="button" title="PT: nhờ AI phân tích ca" aria-label="PT: nhờ AI phân tích ca" aria-expanded="false" data-pa-action-title="PT: nhờ AI phân tích ca" data-pa-action-help="Dùng khi m muốn AI phân tích ca đang xem: vùng H4, phản ứng giá, setup Price Action, entry, SL và TP. Nút này chỉ gửi câu hỏi cho AI, không tự lưu kết quả." data-pa-action-items="Sau khi AI trả lời, m có thể chat thêm rồi Lưu phiên.|Nếu câu trả lời có rule chung, có thể bấm Học để lưu thành bài học riêng." data-pa-chat-prompt="Phân tích ca trade này giúp tôi: vùng H4, setup vào lệnh, SL và TP có hợp không?"><span aria-hidden="true">?</span><span>PT</span></button>
                                 <button class="button secondary pa-ai-quick-action" type="button" title="Học: lưu đoạn chat thành bài học" aria-label="Học: lưu đoạn chat thành bài học" aria-expanded="false" data-pa-action-title="Học: lưu đoạn chat thành bài học" data-pa-action-help="Dùng sau khi đoạn chat có một rule hoặc kinh nghiệm hay. Bấm để lưu nội dung trao đổi thành bài học Price Action chung, lần sau AI sẽ dùng lại khi chat hoặc chấm ca." data-pa-action-items="Hợp để lưu các câu như: vùng chạm nhiều lần thì bỏ, entry phải có xác nhận M15.|Không thay thế Lưu phiên; nó chỉ lưu bài học chung từ hội thoại." data-pa-lesson-save="current"><span aria-hidden="true">★</span><span>Học</span></button>
                                 <button class="button secondary pa-ai-quick-action" type="button" title="M15: soi setup vào lệnh" aria-label="M15: soi setup vào lệnh" aria-expanded="false" data-pa-action-title="M15: soi setup vào lệnh" data-pa-action-help="Dùng khi muốn xem setup vào lệnh ở M15 quanh vùng H4 đang xử. Nút này gửi yêu cầu mở/chuyển chart M15 đúng ca đang xem, không lưu quyết định vào bộ nhớ." data-pa-action-items="Hợp khi H4 có vùng rồi nhưng cần nhìn phản ứng nhỏ hơn để vào lệnh.|Các vùng/hình vẽ đã lưu sẽ đi cùng khi đổi khung." data-pa-chat-prompt="Mở chart M15 cho ca trade này"><span aria-hidden="true">15</span><span>M15</span></button>
+                                <button class="button secondary pa-ai-quick-action" type="button" title="Bỏ qua ca này, sang ca kế tiếp" aria-label="Bỏ qua ca này, sang ca kế tiếp" aria-expanded="false" data-pa-action-title="Bỏ qua ca này" data-pa-action-help="Chuyển sang ca trade kế tiếp mà không đánh dấu ca hiện tại là đúng, sai hay cần sửa." data-pa-action-items="Không lưu kết luận hoặc thay đổi nào.|Ca này vẫn có thể xem lại trong danh sách." data-pa-case-skip><span aria-hidden="true">⏭</span><span>Bỏ qua</span></button>
                             </div>
                         </aside>
                     </div>
                 </section>
 
                 <div class="pa-training-view" id="paTrainingZonesView">
-                    <div class="pa-coach-lower-grid">
-                        <section class="panel pa-training-list-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Hàng đợi ca dạy</h2>
-                                    <span id="paTrainingZoneCount">0 ca</span>
-                                </div>
+                    <section class="panel pa-training-list-panel pa-case-queue-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Danh sách ca trade</h2>
+                                <span id="paTrainingZoneCount">0 ca</span>
                             </div>
-                            <div class="pa-zone-list" id="paTrainingZoneList"></div>
-                        </section>
-                        <section class="panel pa-training-memory-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Bộ nhớ & thống kê</h2>
-                                    <span>Những thứ AI đang học từ quyết định của m.</span>
-                                </div>
-                            </div>
-                            <div class="pa-training-stats" id="paTrainingMemoryStats"></div>
-                            <div class="pa-training-recent" id="paTrainingRecentFeedback"></div>
-                        </section>
-                    </div>
+                            <span class="pa-case-queue-hint">Bấm một ca để xem lý do ở AI Coach</span>
+                        </div>
+                        <div class="pa-zone-list" id="paTrainingZoneList"></div>
+                    </section>
                 </div>
 
                 <div class="pa-training-view" id="paTrainingSetupsView" hidden>
@@ -1945,6 +1994,9 @@
         </section>
     </div>
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
+    <script src="assets/pa-zones.js?v=20261011-cases"></script>
+    <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
+    <script src="assets/pa-workspace.js?v=20261016-trade-level-markers"></script>
     <script src="assets/app.js?v=20261016-openai-budget-usage"></script>
 </body>
 </html>

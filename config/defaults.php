@@ -109,7 +109,7 @@ return [
             ],
         ],
         'risk_reward' => [
-            'min_rr' => 3,
+            'min_rr' => 2,
             'default_rr' => 3,
             'require_sl_beyond_entry_zone' => true,
             'tp_selection' => 'nearest_valid_h4_zone_from_two_candidates',

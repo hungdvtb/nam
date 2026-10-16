@@ -388,9 +388,28 @@ final class OpenAIChatProvider implements ProviderInterface
                 continue;
             }
             $role = strtolower(trim((string)($message['role'] ?? 'user')));
-            $content = trim((string)($message['content'] ?? ''));
-            if ($content === '') {
-                continue;
+            $content = $message['content'] ?? '';
+            if (is_array($content)) {
+                if ($role !== 'user') continue;
+                $parts = [];
+                foreach (array_slice($content, 0, 8) as $part) {
+                    if (!is_array($part)) continue;
+                    if (($part['type'] ?? '') === 'text') {
+                        $text = trim((string)($part['text'] ?? ''));
+                        if ($text !== '') $parts[] = ['type' => 'text', 'text' => function_exists('mb_substr') ? mb_substr($text, 0, 20000) : substr($text, 0, 20000)];
+                    } elseif (($part['type'] ?? '') === 'image_url') {
+                        $image = is_array($part['image_url'] ?? null) ? $part['image_url'] : [];
+                        $url = (string)($image['url'] ?? '');
+                        if (strlen($url) <= 3500000 && preg_match('#^data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}$#', $url) === 1) {
+                            $parts[] = ['type' => 'image_url', 'image_url' => ['url' => $url, 'detail' => 'low']];
+                        }
+                    }
+                }
+                if ($parts === []) continue;
+                $content = $parts;
+            } else {
+                $content = trim((string)$content);
+                if ($content === '') continue;
             }
             if ($role === 'developer') {
                 $role = 'system';
@@ -624,9 +643,17 @@ final class OpenAIChatBudget
             if (!is_array($message)) {
                 continue;
             }
-            $content = (string)($message['content'] ?? '');
-            $chars = function_exists('mb_strlen') ? mb_strlen($content, 'UTF-8') : strlen($content);
-            $inputTokens += (int)ceil(max(0, $chars) / 3) + 8;
+            $content = $message['content'] ?? '';
+            if (is_array($content)) {
+                $text = implode(' ', array_map(static fn(array $part): string => (string)($part['text'] ?? ''), array_filter($content, 'is_array')));
+                $chars = function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text);
+                $hasImage = count(array_filter($content, static fn($part): bool => is_array($part) && ($part['type'] ?? '') === 'image_url')) > 0;
+                $inputTokens += (int)ceil(max(0, $chars) / 3) + ($hasImage ? 900 : 0) + 8;
+            } else {
+                $content = (string)$content;
+                $chars = function_exists('mb_strlen') ? mb_strlen($content, 'UTF-8') : strlen($content);
+                $inputTokens += (int)ceil(max(0, $chars) / 3) + 8;
+            }
         }
 
         $outputTokens = max(64, (int)($maxOutputTokens ?? $this->configValue('max_completion_tokens') ?? 1200));

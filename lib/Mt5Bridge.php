@@ -24,15 +24,15 @@ final class Mt5Bridge
         if (!$timeframes) {
             throw new InvalidArgumentException('Bạn chưa chọn khung thời gian cần lấy dữ liệu');
         }
-        $maxBars = 1000000;
-        $bars = max(50, min($maxBars, $bars));
+        $bars = max(50, min(100000, $bars));
+        $maxTimeframeBars = 1500000; // 100,000 M15 bars expressed as M1 bars.
         $cleanBarsByTimeframe = [];
         foreach ($barsByTimeframe as $timeframe => $count) {
             $timeframe = strtoupper(trim((string)$timeframe));
             if ($timeframe === '') {
                 continue;
             }
-            $cleanBarsByTimeframe[$timeframe] = max(50, min($maxBars, (int)$count));
+            $cleanBarsByTimeframe[$timeframe] = max(50, min($maxTimeframeBars, (int)$count));
         }
 
         $args = [
@@ -55,6 +55,75 @@ final class Mt5Bridge
         return $this->runBridge($args, $terminalPath, 600);
     }
 
+    public function startFetch(array $symbols, array $timeframes, int $bars, string $jobId, ?string $terminalPath = null, array $barsByTimeframe = []): array
+    {
+        $symbols = array_values(array_filter(array_map(fn($s) => strtoupper(trim((string)$s)), $symbols)));
+        $timeframes = array_values(array_filter(array_map(fn($t) => strtoupper(trim((string)$t)), $timeframes)));
+        if (!$symbols) throw new InvalidArgumentException('Bạn chưa chọn cặp tiền cần lấy dữ liệu');
+        if (!$timeframes) throw new InvalidArgumentException('Bạn chưa chọn khung thời gian cần lấy dữ liệu');
+        if (!preg_match('/^[a-f0-9]{24}$/', $jobId)) throw new InvalidArgumentException('Mã lượt tải không hợp lệ.');
+
+        $python = $this->findPython();
+        if ($python === null) {
+            return ['ok' => false, 'error' => 'Không tìm thấy Python trên máy.', 'install_hint' => 'Cài Python 64-bit rồi cài package: pip install MetaTrader5'];
+        }
+
+        $bars = max(50, min(100000, $bars));
+        $cleanBarsByTimeframe = [];
+        foreach ($barsByTimeframe as $timeframe => $count) {
+            $timeframe = strtoupper(trim((string)$timeframe));
+            if ($timeframe !== '') $cleanBarsByTimeframe[$timeframe] = max(50, min(1500000, (int)$count));
+        }
+
+        $jobDir = $this->projectDir . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'mt5_jobs';
+        if (!is_dir($jobDir) && !mkdir($jobDir, 0775, true) && !is_dir($jobDir)) {
+            return ['ok' => false, 'error' => 'Không tạo được thư mục theo dõi lượt tải MT5.'];
+        }
+        $progressPath = $jobDir . DIRECTORY_SEPARATOR . $jobId . '.json';
+        $initial = ['job_id' => $jobId, 'status' => 'starting', 'message' => 'Đang khởi chạy tiến trình tải MT5.', 'completed' => 0, 'total' => count($symbols) * count($timeframes), 'written' => [], 'errors' => [], 'started_at' => gmdate('c')];
+        file_put_contents($progressPath, json_encode($initial, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        $script = $this->projectDir . DIRECTORY_SEPARATOR . 'scripts' . DIRECTORY_SEPARATOR . 'mt5_bridge.py';
+        $command = array_merge($python, [
+            $script, 'fetch',
+            '--symbols', implode(',', $symbols),
+            '--timeframes', implode(',', $timeframes),
+            '--bars', (string)$bars,
+        ]);
+        if ($cleanBarsByTimeframe) {
+            $pairs = [];
+            foreach ($cleanBarsByTimeframe as $timeframe => $count) $pairs[] = $timeframe . ':' . $count;
+            $command[] = '--bars-by-timeframe';
+            $command[] = implode(',', $pairs);
+        }
+        $command[] = '--output-dir';
+        $command[] = $this->projectDir . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'market_data';
+        $command[] = '--progress-file';
+        $command[] = $progressPath;
+        if ($terminalPath !== null && trim($terminalPath) !== '') {
+            $command[] = '--terminal';
+            $command[] = $terminalPath;
+        }
+
+        $shellCommand = 'start "" /B ' . implode(' ', array_map([$this, 'quote'], $command)) . ' > NUL 2>&1';
+        $pipe = @popen($shellCommand, 'r');
+        if (!is_resource($pipe)) {
+            @unlink($progressPath);
+            return ['ok' => false, 'error' => 'Không khởi chạy được tiến trình tải dữ liệu nền.'];
+        }
+        pclose($pipe);
+        return ['ok' => true, 'job_id' => $jobId, 'progress' => $initial];
+    }
+
+    public function fetchProgress(string $jobId): ?array
+    {
+        if (!preg_match('/^[a-f0-9]{24}$/', $jobId)) return null;
+        $path = $this->projectDir . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'mt5_jobs' . DIRECTORY_SEPARATOR . $jobId . '.json';
+        if (!is_file($path)) return null;
+        $payload = json_decode(file_get_contents($path) ?: '', true);
+        return is_array($payload) ? $payload : null;
+    }
+
     public function saveMarketData(array $bridgePayload, JsonStore $store): array
     {
         $written = [];
@@ -73,19 +142,7 @@ final class Mt5Bridge
                 }
                 $file = 'market_data/' . $this->safeName($symbol) . '_' . $this->safeName($timeframe) . '.json';
                 $incomingCount = count($bars);
-                $existing = $store->readJson($file, null);
-                $existingBars = is_array($existing) && is_array($existing['bars'] ?? null) ? count($existing['bars']) : 0;
-                if ($existingBars > $incomingCount) {
-                    $written[] = [
-                        'symbol' => strtoupper((string)$symbol),
-                        'timeframe' => strtoupper((string)$timeframe),
-                        'bars' => $existingBars,
-                        'fetched_bars' => $incomingCount,
-                        'file' => $file,
-                        'kept_existing' => true,
-                    ];
-                    continue;
-                }
+                if ($incomingCount === 0) continue;
 
                 $payload = [
                     'symbol' => strtoupper((string)$symbol),

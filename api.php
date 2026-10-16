@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/JsonStore.php';
+require_once __DIR__ . '/lib/Mt5Bridge.php';
+require_once __DIR__ . '/lib/PaReviewService.php';
 require_once __DIR__ . '/lib/AI/Gateway/ProviderFactory.php';
 require_once __DIR__ . '/lib/AI/Gateway/OpenAIProviderStatus.php';
 require_once __DIR__ . '/lib/AI/Gateway/OllamaProviderStatus.php';
 
+if (!defined('AI_TRADE_API_LIBRARY_ONLY')) {
 header('Content-Type: application/json; charset=utf-8');
 
 $defaults = require __DIR__ . '/config/defaults.php';
@@ -22,6 +25,7 @@ try {
 } catch (Throwable $e) {
     http_response_code(400);
     apiJson(['ok' => false, 'error' => $e->getMessage()]);
+}
 }
 
 function apiPayload(): array
@@ -47,13 +51,19 @@ function apiHandle(string $action, array $payload, JsonStore $store, array $defa
         'risk_preview' => riskPreview($payload),
         'save_accounts' => saveAccounts($store, $payload),
         'save_strategy' => saveStrategy($store, $payload),
-        'mt5_status' => ['ok' => true, 'mt5' => ['ok' => false, 'error' => 'MT5 bridge chua ch?y trong b?n API khôi ph?c. D? li?u da luu v?n dùng du?c.']],
-        'mt5_fetch' => ['ok' => true, 'written' => [], 'market_files' => marketFiles()],
+        'mt5_status' => mt5StatusAction($payload),
+        'mt5_fetch' => mt5FetchAction($payload),
+        'mt5_fetch_status' => mt5FetchStatusAction($payload),
         'pa_training_zone_candidates' => paTrainingZoneCandidatesAction($store, $payload),
         'pa_training_trade_cases' => paTrainingTradeCases($store, $payload),
         'pa_training_feedback_save' => paTrainingFeedbackSave($store, $payload),
+        'pa_training_saved_cases' => paTrainingSavedCases($store),
+        'pa_training_saved_case_update' => paTrainingSavedCaseMutate($store, 'update', $payload),
+        'pa_training_saved_case_delete' => paTrainingSavedCaseMutate($store, 'delete', $payload),
+        'pa_training_saved_case_restore' => paTrainingSavedCaseMutate($store, 'restore', $payload),
         'pa_training_ai_chat' => paTrainingAiChat($store, $payload),
         'pa_training_chat_history' => paTrainingChatHistoryAction($store, $payload),
+        'pa_training_workspace_state' => paTrainingWorkspaceState($store, $payload),
         'pa_training_memory' => ['ok' => true, 'pa_training_memory' => paTrainingMemory($store)],
         'pa_training_lesson_save' => savePaTrainingLesson($store, $payload),
         'pa_training_manual_zone_save' => paTrainingManualZoneSave($store, $payload),
@@ -72,6 +82,78 @@ function apiHandle(string $action, array $payload, JsonStore $store, array $defa
         'run_backtest' => ['ok' => true, 'run' => ['id' => 'run_' . time(), 'createdAt' => gmdate('c'), 'trades' => []], 'trades' => []],
         default => genericApiPayload($action, $payload, $store),
     };
+}
+
+function mt5StatusAction(array $payload): array
+{
+    $terminalPath = trim((string)($payload['terminal_path'] ?? ''));
+    $mt5 = (new Mt5Bridge(__DIR__))->status($terminalPath !== '' ? $terminalPath : null);
+    return ['ok' => (bool)($mt5['ok'] ?? false), 'mt5' => $mt5];
+}
+
+function mt5FetchAction(array $payload): array
+{
+    $symbols = $payload['symbols'] ?? [];
+    $timeframes = $payload['timeframes'] ?? [];
+    if (!is_array($symbols) || !is_array($timeframes)) {
+        throw new InvalidArgumentException('Danh sách cặp tiền hoặc khung thời gian không hợp lệ.');
+    }
+    $terminalPath = trim((string)($payload['terminal_path'] ?? ''));
+    $barsByTimeframe = is_array($payload['bars_by_timeframe'] ?? null) ? $payload['bars_by_timeframe'] : [];
+    $jobId = bin2hex(random_bytes(12));
+    $started = (new Mt5Bridge(__DIR__))->startFetch(
+        $symbols,
+        $timeframes,
+        (int)($payload['bars'] ?? 100000),
+        $jobId,
+        $terminalPath !== '' ? $terminalPath : null,
+        $barsByTimeframe
+    );
+    if (!($started['ok'] ?? false)) {
+        return ['ok' => false, 'mt5' => $started, 'written' => [], 'market_files' => marketFiles()];
+    }
+    return ['ok' => true, 'job_id' => $jobId, 'progress' => $started['progress'] ?? []];
+}
+
+function mt5FetchStatusAction(array $payload): array
+{
+    $jobId = (string)($payload['job_id'] ?? '');
+    $progress = (new Mt5Bridge(__DIR__))->fetchProgress($jobId);
+    if ($progress === null) {
+        return ['ok' => false, 'error' => 'Không tìm thấy trạng thái lượt tải MT5 này.'];
+    }
+    if (($progress['status'] ?? '') === 'starting' && time() - (strtotime((string)($progress['started_at'] ?? 'now')) ?: time()) > 45) {
+        return ['ok' => false, 'error' => 'Tiến trình tải MT5 không khởi chạy được. Hãy kiểm tra Python và package MetaTrader5 rồi thử lại.'];
+    }
+    if (($progress['status'] ?? '') === 'failed') {
+        $message = (string)($progress['message'] ?? 'MT5 không tải được dữ liệu.');
+        $detail = (string)($progress['error'] ?? '');
+        $partialSummary = 'Đã xử lý ' . (int)($progress['completed'] ?? 0) . '/' . (int)($progress['total'] ?? 0)
+            . ' cặp-khung, đã ghi ' . count(is_array($progress['written'] ?? null) ? $progress['written'] : []) . ' tệp.';
+        return ['ok' => false, 'progress' => $progress, 'mt5' => [
+            'ok' => false,
+            'error' => $message,
+            'detail' => $detail,
+            'mt5_error' => $progress['mt5_error'] ?? null,
+        ], 'error' => $detail !== '' ? $message . ' ' . $detail . ' ' . $partialSummary : $message . ' ' . $partialSummary];
+    }
+    if (($progress['status'] ?? '') !== 'complete') {
+        return ['ok' => true, 'progress' => $progress];
+    }
+
+    $written = is_array($progress['written'] ?? null) ? $progress['written'] : [];
+    foreach ($written as &$item) {
+        if (is_array($item) && isset($item['file'])) $item['file'] = basename(str_replace('\\', '/', (string)$item['file']));
+    }
+    unset($item);
+    return [
+        'ok' => true,
+        'complete' => true,
+        'progress' => $progress,
+        'mt5' => ['ok' => true, 'errors' => $progress['errors'] ?? []],
+        'written' => $written,
+        'market_files' => marketFiles(),
+    ];
 }
 
 function bootstrapPayload(JsonStore $store, array $defaults): array
@@ -102,6 +184,7 @@ function bootstrapPayload(JsonStore $store, array $defaults): array
         'manual_reviews' => $store->readJson('manual_reviews.json', []),
         'zone_manual_reviews' => $store->readJson('zone_manual_reviews.json', []),
         'pa_training_memory' => paTrainingMemory($store),
+        'pa_training_workspace' => $store->readJson('pa_training/workspace_state.json', []),
         'calibrated_presets' => $store->readJson('calibrated_presets.json', []),
     ];
 }
@@ -188,14 +271,29 @@ function paTrainingLower(string $value): string { return function_exists('mb_str
 function paTrainingContainsAny(string $text, array $needles): bool { foreach ($needles as $needle) if ($needle !== '' && str_contains($text, paTrainingLower((string)$needle))) return true; return false; }
 function paTrainingLimitText(string $text, int $limit = 1200): string { return function_exists('mb_substr') ? mb_substr(trim($text), 0, $limit, 'UTF-8') : substr(trim($text), 0, $limit); }
 
-function paTrainingMemory(JsonStore $store): array
+function paTrainingMemory(JsonStore $store, bool $includeDeleted = false): array
 {
     $m = $store->readJson('pa_training/memory.json', []);
-    return [
+    $memory = [
         'zone_reviews' => array_values(is_array($m['zone_reviews'] ?? null) ? $m['zone_reviews'] : []),
         'setup_reviews' => array_values(is_array($m['setup_reviews'] ?? null) ? $m['setup_reviews'] : []),
         'lessons' => array_values(is_array($m['lessons'] ?? null) ? $m['lessons'] : []),
     ];
+    if (!$includeDeleted) foreach ($memory as $key => $items) $memory[$key] = array_values(array_filter($items, static fn(array $item): bool => empty($item['deletedAt'])));
+    return $memory;
+}
+
+function paTrainingSavedCases(JsonStore $store): array
+{
+    $memory = paTrainingMemory($store, true);
+    return ['ok' => true, 'saved_cases' => $memory['setup_reviews'], 'pa_training_memory' => paTrainingMemory($store)];
+}
+
+function paTrainingSavedCaseMutate(JsonStore $store, string $action, array $payload): array
+{
+    $memory = PaReviewService::mutate(paTrainingMemory($store, true), $action, $payload);
+    paTrainingSaveMemory($store, $memory);
+    return paTrainingSavedCases($store);
 }
 
 function paTrainingSaveMemory(JsonStore $store, array $m): void
@@ -240,6 +338,47 @@ function paTrainingZoneCandidatesAction(JsonStore $store, array $payload): array
     return ['ok' => true, 'zone_candidates' => paTrainingZoneCandidates($store, $symbol, $tf), 'pa_training_memory' => paTrainingMemory($store)];
 }
 
+function paTrainingBarTimestamp(array $bar): int
+{
+    $timestamp = $bar['timestamp'] ?? $bar['time'] ?? $bar['time_iso'] ?? null;
+    if (is_numeric($timestamp)) return (int)$timestamp;
+    $parsed = strtotime((string)$timestamp);
+    return $parsed === false ? 0 : $parsed;
+}
+
+function paTrainingM15Window(JsonStore $store, string $symbol): ?array
+{
+    $path = __DIR__ . '/data/market_data/' . $symbol . '_M15.json';
+    if (!is_file($path)) return null;
+    $data = json_decode(file_get_contents($path) ?: '', true);
+    $rawBars = is_array($data) && is_array($data['bars'] ?? null) ? $data['bars'] : [];
+    $times = array_values(array_filter(array_map(static fn($bar): int => is_array($bar) ? paTrainingBarTimestamp($bar) : 0, $rawBars), static fn(int $time): bool => $time > 0));
+    if (!$times) return null;
+    return ['start' => min($times), 'end' => max($times)];
+}
+
+function paTrainingAlignBarsToM15(JsonStore $store, string $symbol, string $timeframe, array $bars): array
+{
+    if (strtoupper($timeframe) === 'M15') return array_values($bars);
+    $window = paTrainingM15Window($store, $symbol);
+    if (!$window) return array_values($bars);
+    $durationSeconds = match (strtoupper($timeframe)) {
+        'M1' => 60, 'M5' => 300, 'M15' => 900, 'M30' => 1800,
+        'H1' => 3600, 'H4' => 14400, 'D1' => 86400,
+        default => 0,
+    };
+    $aligned = [];
+    foreach ($bars as $bar) {
+        if (!is_array($bar)) continue;
+        $time = paTrainingBarTimestamp($bar);
+        $barEnd = $time + max(1, $durationSeconds) - 1;
+        if ($barEnd < $window['start'] || $time > $window['end']) continue;
+        $bar['index'] = count($aligned);
+        $aligned[] = $bar;
+    }
+    return $aligned;
+}
+
 function paTrainingZoneCandidates(JsonStore $store, string $symbol, string $timeframe = 'H4'): array
 {
     $zones = [];
@@ -247,6 +386,7 @@ function paTrainingZoneCandidates(JsonStore $store, string $symbol, string $time
     if (is_file($path)) {
         $data = normalizeMarketData(json_decode(file_get_contents($path) ?: '', true) ?: []);
         $bars = is_array($data['bars'] ?? null) ? $data['bars'] : [];
+        $bars = paTrainingAlignBarsToM15($store, $symbol, $timeframe, $bars);
         $count = count($bars);
         $averageRange = static function (int $index) use ($bars, $count): float {
             $from = max(0, $index - 24);
@@ -271,7 +411,7 @@ function paTrainingZoneCandidates(JsonStore $store, string $symbol, string $time
             return null;
         };
         $lastAccepted = -9999;
-        for ($i = 8; $i < $count - 8 && count($zones) < 220; $i++) {
+        for ($i = 8; $i < $count - 8 && count($zones) < 1000; $i++) {
             if ($i - $lastAccepted < 8) continue;
             $bar = $bars[$i];
             $open = (float)($bar['open'] ?? 0);
@@ -373,8 +513,14 @@ function paTrainingZoneCandidates(JsonStore $store, string $symbol, string $time
             }
         }
     }
+    $m15Window = strtoupper($timeframe) === 'M15' ? null : paTrainingM15Window($store, $symbol);
     foreach (paTrainingManualZones($store) as $zone) {
-        if (paTrainingSymbol((string)($zone['symbol'] ?? '')) === $symbol) $zones[] = $zone;
+        if (paTrainingSymbol((string)($zone['symbol'] ?? '')) !== $symbol) continue;
+        if ($m15Window) {
+            $zoneTime = strtotime((string)($zone['originCandleTime'] ?? $zone['firstTouchTime'] ?? $zone['createdAt'] ?? ''));
+            if ($zoneTime !== false && ($zoneTime < $m15Window['start'] || $zoneTime > $m15Window['end'])) continue;
+        }
+        $zones[] = $zone;
     }
     $zoneSortIndex = static function (array $zone): int {
         if (isset($zone['firstTouchIndex'])) return (int)$zone['firstTouchIndex'];
@@ -392,34 +538,145 @@ function paTrainingTradeCases(JsonStore $store, array $payload): array
     $limit = max(1, min(500, (int)($payload['limit'] ?? 180)));
     $zones = paTrainingZoneCandidates($store, $symbol, $tf);
     $bars = [];
+    $m15Bars = [];
+    $strategy = $store->readJson('strategy.json', []);
+    $riskReward = is_array($strategy['risk_reward'] ?? null) ? $strategy['risk_reward'] : [];
+    // The teaching-case scanner's hard floor is 2R; strategy default_rr controls
+    // the preferred target (3R by default), even if an older saved strategy has
+    // a stale min_rr value.
+    $minimumRr = 2.0;
+    $preferredRr = max($minimumRr, (float)($riskReward['default_rr'] ?? 3.0));
     $path = __DIR__ . '/data/market_data/' . $symbol . '_' . $tf . '.json';
     if (is_file($path)) {
         $data = normalizeMarketData(json_decode(file_get_contents($path) ?: '', true) ?: []);
         $bars = is_array($data['bars'] ?? null) ? $data['bars'] : [];
+        $bars = paTrainingAlignBarsToM15($store, $symbol, $tf, $bars);
+    }
+    $m15Path = __DIR__ . '/data/market_data/' . $symbol . '_M15.json';
+    if (is_file($m15Path)) {
+        $m15Data = normalizeMarketData(json_decode(file_get_contents($m15Path) ?: '', true) ?: []);
+        $m15Bars = is_array($m15Data['bars'] ?? null) ? $m15Data['bars'] : [];
     }
     $cases = [];
-    foreach (array_slice($zones, 0, $limit) as $i => $zone) {
-        $case = paTrainingBuildTeachingCase($zone, $bars, $i);
+    foreach ($zones as $i => $zone) {
+        $case = paTrainingBuildTeachingCase($zone, $bars, $i, $m15Bars, $minimumRr, $preferredRr);
         if ($case) $cases[] = $case;
     }
     usort($cases, static fn(array $a, array $b): int => ((int)($a['entryIndex'] ?? 0)) <=> ((int)($b['entryIndex'] ?? 0)));
+    // Keep the most recent completed trades when the historical scan exceeds
+    // the queue limit, so refreshed data actually reaches the training queue.
+    if (count($cases) > $limit) $cases = array_slice($cases, -$limit);
     return [
         'ok' => true,
         'zone_candidates' => $zones,
         'trade_cases' => $cases,
         'selected_case_id' => $cases[0]['id'] ?? '',
-        'case_summary' => ['h4_bars' => count($bars), 'cases' => count($cases)],
+        'case_summary' => ['h4_bars' => count($bars), 'm15_bars' => count($m15Bars), 'cases' => count($cases)],
         'pa_training_memory' => paTrainingMemory($store),
     ];
 }
 
-function paTrainingBuildTeachingCase(array $zone, array $bars, int $index): ?array
+function paTrainingM15IndexAtOrAfter(array $bars, int $time): int
+{
+    $low = 0;
+    $high = count($bars);
+    while ($low < $high) {
+        $middle = intdiv($low + $high, 2);
+        if (paTrainingBarTimestamp($bars[$middle]) < $time) $low = $middle + 1;
+        else $high = $middle;
+    }
+    return $low;
+}
+
+function paTrainingTriggeredEntry(array $zone, array $m15Bars, int $touchTime, string $direction, float $minimumRr = 2.0, float $preferredRr = 3.0): ?array
+{
+    $count = count($m15Bars);
+    if ($count < 3 || $touchTime <= 0) return null;
+    $zoneLow = (float)($zone['low'] ?? 0);
+    $zoneHigh = (float)($zone['high'] ?? 0);
+    $zoneMid = ($zoneLow + $zoneHigh) / 2;
+    $zoneHeight = $zoneHigh - $zoneLow;
+    if ($zoneHeight <= 0) return null;
+    $start = paTrainingM15IndexAtOrAfter($m15Bars, $touchTime);
+    // The retest must turn into an M15 signal within two H4 candles.
+    $lastSignalTime = $touchTime + 8 * 3600;
+    for ($i = $start; $i < $count - 1 && paTrainingBarTimestamp($m15Bars[$i]) < $lastSignalTime; $i++) {
+        $bar = $m15Bars[$i];
+        $open = (float)($bar['open'] ?? NAN);
+        $close = (float)($bar['close'] ?? NAN);
+        $high = (float)($bar['high'] ?? NAN);
+        $low = (float)($bar['low'] ?? NAN);
+        if (!is_finite($open) || !is_finite($close) || !is_finite($high) || !is_finite($low)) continue;
+        $touchesZone = $low <= $zoneHigh && $high >= $zoneLow;
+        $confirms = $direction === 'short'
+            ? $close < $open && $close <= $zoneMid
+            : $close > $open && $close >= $zoneMid;
+        if (!$touchesZone || !$confirms) continue;
+        $entryBar = $m15Bars[$i + 1];
+        $entryPrice = (float)($entryBar['open'] ?? NAN);
+        if (!is_finite($entryPrice) || $entryPrice <= 0) continue;
+        // Skip a gap that has already moved away from the setup before entry.
+        if ($entryPrice < $zoneLow - $zoneHeight * 0.2 || $entryPrice > $zoneHigh + $zoneHeight * 0.2) continue;
+        $buffer = max($zoneHeight * 0.1, abs($entryPrice) * 0.0001);
+        $sl = $direction === 'short' ? max($zoneHigh, $high) + $buffer : min($zoneLow, $low) - $buffer;
+        $risk = abs($entryPrice - $sl);
+        if ($risk <= 0 || $risk > $zoneHeight * 3) continue;
+        $targetR = max($minimumRr, $preferredRr);
+        $target = $direction === 'short' ? $entryPrice - $risk * $targetR : $entryPrice + $risk * $targetR;
+        return [
+            'signalIndex' => $i,
+            'entryIndex' => $i + 1,
+            'entryPrice' => $entryPrice,
+            'sl' => $sl,
+            'tp1' => $target,
+            'tp2' => $target,
+            'rr' => $targetR,
+            'risk' => $risk,
+        ];
+    }
+    return null;
+}
+
+function paTrainingResolvedExit(array $bars, int $entryIndex, string $direction, float $sl, float $tp1, float $tp2): ?array
+{
+    $tp1Taken = false;
+    $last = min(count($bars) - 1, $entryIndex + 512);
+    for ($i = $entryIndex; $i <= $last; $i++) {
+        $open = (float)($bars[$i]['open'] ?? NAN);
+        $high = (float)($bars[$i]['high'] ?? NAN);
+        $low = (float)($bars[$i]['low'] ?? NAN);
+        if (!is_finite($open) || !is_finite($high) || !is_finite($low)) continue;
+        if ($direction === 'short') {
+            if ($open >= $sl) return ['index' => $i, 'price' => $open, 'type' => $tp1Taken ? 'TP1_SL' : 'SL', 'gap' => true];
+            if ($open <= $tp2) return ['index' => $i, 'price' => $tp2, 'type' => 'TP2'];
+            if ($open <= $tp1) $tp1Taken = true;
+            $hitSl = $high >= $sl;
+            $hitTp2 = $low <= $tp2;
+            $hitTp1 = $low <= $tp1;
+        } else {
+            if ($open <= $sl) return ['index' => $i, 'price' => $open, 'type' => $tp1Taken ? 'TP1_SL' : 'SL', 'gap' => true];
+            if ($open >= $tp2) return ['index' => $i, 'price' => $tp2, 'type' => 'TP2'];
+            if ($open >= $tp1) $tp1Taken = true;
+            $hitSl = $low <= $sl;
+            $hitTp2 = $high >= $tp2;
+            $hitTp1 = $high >= $tp1;
+        }
+        // OHLC has no intrabar order; count a candle touching both as SL.
+        if ($hitSl) return ['index' => $i, 'price' => $sl, 'type' => $tp1Taken ? 'TP1_SL' : 'SL', 'sameBarAmbiguous' => !$tp1Taken && ($hitTp1 || $hitTp2)];
+        if ($hitTp2) return ['index' => $i, 'price' => $tp2, 'type' => 'TP2'];
+        if ($hitTp1) $tp1Taken = true;
+    }
+    return null;
+}
+
+function paTrainingBuildTeachingCase(array $zone, array $bars, int $index, array $m15Bars = [], float $minimumRr = 2.0, float $preferredRr = 3.0): ?array
 {
     $symbol = paTrainingSymbol((string)($zone['symbol'] ?? ''));
-    if ($symbol === '') return null;
+    if ($symbol === '' || !$m15Bars || ($zone['source'] ?? '') !== 'auto_price_action_scan') return null;
     $direction = ($zone['type'] ?? '') === 'supply' ? 'short' : 'long';
     $barCount = count($bars);
-    $anchorIndex = min(max(0, (int)($zone['firstTouchIndex'] ?? $index * 12 + 2)), max(0, $barCount - 1));
+    if ($barCount === 0 || !isset($zone['firstTouchIndex'])) return null;
+    $anchorIndex = min(max(0, (int)$zone['firstTouchIndex']), $barCount - 1);
     $originIndex = min(max(0, (int)($zone['originIndex'] ?? max(0, $anchorIndex - 2))), max(0, $barCount - 1));
     $anchorBar = $bars[$anchorIndex] ?? [];
     $originBar = $bars[$originIndex] ?? $anchorBar;
@@ -427,43 +684,57 @@ function paTrainingBuildTeachingCase(array $zone, array $bars, int $index): ?arr
     $low = (float)($zone['low'] ?? ($originBar['low'] ?? 0));
     $high = (float)($zone['high'] ?? ($originBar['high'] ?? 0));
     if (!is_finite($low) || !is_finite($high) || $high <= $low) return null;
-    $entry = ($low + $high) / 2;
-    $zoneHeight = max(abs($high - $low), max(abs($entry) * 0.00035, 0.00001));
-    $sl = $direction === 'short' ? $high + $zoneHeight * 0.28 : $low - $zoneHeight * 0.28;
-    $risk = max(abs($entry - $sl), max(abs($entry) * 0.0005, 0.00001));
-    $rr = 2.5;
-    $tp = $direction === 'short' ? $entry - $risk * $rr : $entry + $risk * $rr;
-    $exit = paTrainingTeachingCaseExit($bars, $anchorIndex, $direction, $sl, $tp, $entry);
-    $exitIndex = (int)($exit['index'] ?? $anchorIndex);
-    $exitPrice = (float)($exit['price'] ?? $entry);
-    $netR = $direction === 'short' ? ($entry - $exitPrice) / $risk : ($exitPrice - $entry) / $risk;
+    $touchTime = paTrainingBarTimestamp($anchorBar);
+    $signal = paTrainingTriggeredEntry($zone, $m15Bars, $touchTime, $direction, $minimumRr, $preferredRr);
+    if (!$signal) return null;
+    $entryIndex = $signal['entryIndex'];
+    $entry = $signal['entryPrice'];
+    $sl = $signal['sl'];
+    $tp1 = $signal['tp1'];
+    $tp2 = $signal['tp2'];
+    $risk = $signal['risk'];
+    $exit = paTrainingResolvedExit($m15Bars, $entryIndex, $direction, $sl, $tp1, $tp2);
+    if (!$exit) return null;
+    $exitIndex = $exit['index'];
+    $exitPrice = $exit['price'];
+    $netR = ($direction === 'short' ? $entry - $exitPrice : $exitPrice - $entry) / $risk;
     $zoneLabel = $direction === 'short' ? 'Vùng canh sell' : 'Vùng canh buy';
     $sideLabel = $direction === 'short' ? 'Bán' : 'Mua';
     $rangeText = number_format($low, 5, '.', '') . ' - ' . number_format($high, 5, '.', '');
+    $entryBar = $m15Bars[$entryIndex];
+    $signalBar = $m15Bars[$signal['signalIndex']];
+    $exitBar = $m15Bars[$exitIndex];
     return [
-        'id' => 'case_' . (string)($zone['id'] ?? $index) . '_' . $anchorIndex,
+        'id' => 'case_' . (string)($zone['id'] ?? $index) . '_' . paTrainingBarTimestamp($entryBar),
         'isTeachingCase' => true,
-        'caseStatus' => 'open',
+        'caseStatus' => 'closed',
+        'resultStatus' => 'closed',
         'symbol' => $symbol,
-        'timeframe' => (string)($zone['timeframe'] ?? 'H4'),
+        'timeframe' => 'M15',
+        'contextTimeframe' => (string)($zone['timeframe'] ?? 'H4'),
         'direction' => $direction,
         'anchorTime' => $anchorTime,
         'anchorIndex' => $anchorIndex,
-        'entryIndex' => $anchorIndex,
-        'entryCandleNumber' => $anchorIndex + 1,
-        'entryTime' => $anchorTime,
+        'signalIndex' => $signal['signalIndex'],
+        'signalTime' => (string)($signalBar['time'] ?? ''),
+        'entryIndex' => $entryIndex,
+        'entryCandleNumber' => $entryIndex + 1,
+        'entryTime' => (string)($entryBar['time'] ?? ''),
         'entryPrice' => $entry,
         'initialStop' => $sl,
-        'targetPrice' => $tp,
+        'targetPrice' => $tp1,
+        'targetPrice2' => null,
         'exitIndex' => $exitIndex,
         'exitCandleNumber' => $exitIndex + 1,
-        'exitTime' => (string)($bars[$exitIndex]['time'] ?? $anchorTime),
+        'exitTime' => (string)($exitBar['time'] ?? ''),
         'exitPrice' => $exitPrice,
-        'exitType' => (string)($exit['type'] ?? 'time_stop'),
+        'exitType' => $exit['type'],
         'netR' => round($netR, 2),
         'riskR' => $risk,
-        'rr' => $rr,
-        'holdingBars' => max(0, $exitIndex - $anchorIndex),
+        'rr' => round((float)$signal['rr'], 2),
+        'rrTarget2' => null,
+        'holdingBars' => max(0, $exitIndex - $entryIndex),
+        'sameBarAmbiguous' => (bool)($exit['sameBarAmbiguous'] ?? false),
         'zoneId' => (string)($zone['id'] ?? ''),
         'zoneType' => (string)($zone['type'] ?? ''),
         'zoneLow' => $low,
@@ -476,50 +747,31 @@ function paTrainingBuildTeachingCase(array $zone, array $bars, int $index): ?arr
             'firstTouchIndex' => $anchorIndex,
             'firstTouchCandleNumber' => $anchorIndex + 1,
         ]),
-        'reason' => $zoneLabel . ': giá quay lại vùng ' . $rangeText . '. ' . $sideLabel . ' tại giữa vùng, SL đặt ngoài vùng, TP ' . $rr . 'R để bạn chấm như đang backtest.',
+        'reason' => $zoneLabel . ': giá quay lại vùng ' . $rangeText . ', M15 có nến xác nhận. ' . $sideLabel . ' ở giá mở cửa nến kế tiếp, kết quả theo các nến M15 sau lệnh.',
         'zoneReason' => (string)($zone['reason'] ?? ($zoneLabel . ' lấy từ vùng phản ứng H4.')),
-        'entryReason' => 'Nến #' . ($anchorIndex + 1) . ' quay lại vùng ' . $rangeText . ', app đặt entry giả lập ở giữa vùng để bạn chấm.',
-        'riskReason' => 'SL nằm ngoài biên vùng; TP theo RR cố định để so sánh từng ca cho nhất quán.',
-        'exitReason' => paTrainingTeachingExitReason((string)($exit['type'] ?? 'time_stop'), (float)$netR),
+        'entryReason' => 'Nến M15 #' . ($signal['signalIndex'] + 1) . ' chạm vùng ' . $rangeText . ' và đóng ' . ($direction === 'short' ? 'giảm dưới giữa vùng' : 'tăng trên giữa vùng') . '. Vào ' . strtolower($sideLabel) . ' tại giá mở cửa nến M15 kế tiếp (#' . ($entryIndex + 1) . ').',
+        'riskReason' => 'Chỉ giữ setup có RR tối thiểu ' . number_format($minimumRr, 1) . 'R; TP mặc định tại ' . number_format((float)$signal['rr'], 1) . 'R tính từ giá vào thực tế.',
+        'exitReason' => paTrainingTeachingExitReason($exit['type'], (float)$netR) . (!empty($exit['sameBarAmbiguous']) ? ' Nến này chạm cả SL và TP; tính SL vì không có dữ liệu thứ tự giá trong nến.' : ''),
         'annotations' => [
             'zoneLabel' => strtoupper($zoneLabel),
-            'entryLabel' => 'ENTRY',
-            'slLabel' => 'SL',
-            'tpLabel' => 'TP',
-            'exitLabel' => strtoupper((string)($exit['type'] ?? 'time_stop')),
+            'entryLabel' => '', 'slLabel' => '', 'tpLabel' => '', 'exitLabel' => '',
         ],
     ];
 }
 
-function paTrainingTeachingCaseExit(array $bars, int $entryIndex, string $direction, float $sl, float $tp, float $entry): array
-{
-    if (!count($bars)) return ['index' => 0, 'price' => $entry, 'type' => 'time_stop'];
-    $last = min(count($bars) - 1, $entryIndex + 96);
-    for ($i = $entryIndex + 1; $i <= $last; $i++) {
-        $high = (float)($bars[$i]['high'] ?? 0);
-        $low = (float)($bars[$i]['low'] ?? 0);
-        if ($direction === 'long') {
-            if ($low <= $sl) return ['index' => $i, 'price' => $sl, 'type' => 'SL'];
-            if ($high >= $tp) return ['index' => $i, 'price' => $tp, 'type' => 'TP'];
-        } else {
-            if ($high >= $sl) return ['index' => $i, 'price' => $sl, 'type' => 'SL'];
-            if ($low <= $tp) return ['index' => $i, 'price' => $tp, 'type' => 'TP'];
-        }
-    }
-    $close = (float)($bars[$last]['close'] ?? $entry);
-    return ['index' => $last, 'price' => $close, 'type' => 'time_stop'];
-}
-
 function paTrainingTeachingExitReason(string $type, float $netR): string
 {
-    if ($type === 'TP') return 'Giá chạm TP trước, ca đang thắng theo mô phỏng.';
-    if ($type === 'SL') return 'Giá chạm SL trước, cần xem lại vùng, entry hoặc cách đặt SL.';
-    return 'Hết đoạn quan sát mà chưa chạm TP/SL, app thoát theo thời gian để bạn chấm tiếp.';
+    if ($type === 'TP' || $type === 'TP1') return 'Sau khi vào lệnh, nến M15 chạm TP1; kết quả mô phỏng là ' . number_format($netR, 2, '.', '') . 'R.';
+    if ($type === 'TP2') return 'Sau khi vào lệnh, chốt một nửa ở TP1 và phần còn lại ở TP2; kết quả mô phỏng là ' . number_format($netR, 2, '.', '') . 'R.';
+    if ($type === 'TP1_SL') return 'Chốt một nửa ở TP1, phần còn lại chạm SL; kết quả mô phỏng là 0R.';
+    if ($type === 'SL') return 'Sau khi vào lệnh, nến M15 chạm SL trước TP; kết quả mô phỏng là ' . number_format($netR, 2, '.', '') . 'R.';
+    return 'Chưa có kết quả SL/TP xác nhận từ nến M15.';
 }
 function paTrainingFeedbackSave(JsonStore $store, array $payload): array
 {
     $kind = (string)($payload['kind'] ?? 'setup');
     $snapshot = is_array($payload['snapshot'] ?? null) ? $payload['snapshot'] : [];
+    if (!empty($snapshot['trade']['corrected'])) $snapshot['trade'] = PaReviewService::correctedTrade($snapshot['trade'], []);
     $json = json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
     if (strlen($json) > 500000) {
         $snapshot = [
@@ -527,6 +779,7 @@ function paTrainingFeedbackSave(JsonStore $store, array $payload): array
             'truncated' => true,
             'original_size' => strlen($json),
             'summary' => [
+                'originalTrade' => $snapshot['originalTrade'] ?? null,
                 'zone' => $snapshot['zone'] ?? null,
                 'trade' => $snapshot['trade'] ?? null,
                 'session' => is_array($snapshot['session'] ?? null) ? array_diff_key($snapshot['session'], ['chart' => true]) : null,
@@ -545,7 +798,19 @@ function paTrainingFeedbackSave(JsonStore $store, array $payload): array
         'snapshot' => $snapshot,
         'createdAt' => gmdate('c'),
     ];
-    $m = paTrainingMemory($store);
+    $m = paTrainingMemory($store, true);
+    $reviewId = (string)($payload['reviewId'] ?? '');
+    if ($reviewId !== '') {
+        $existing = null;
+        foreach ($m['setup_reviews'] as $item) if (($item['id'] ?? '') === $reviewId && empty($item['deletedAt'])) { $existing = $item; break; }
+        if (!$existing) throw new InvalidArgumentException('Ca đã lưu không còn tồn tại. Hãy mở lại danh sách ca.');
+        if (($payload['expectedUpdatedAt'] ?? '') !== ($existing['updatedAt'] ?? $existing['createdAt'])) throw new RuntimeException('Ca đã được sửa ở cửa sổ khác. Hãy tải lại trước khi lưu.');
+        $review['id'] = $reviewId;
+        $review['createdAt'] = $existing['createdAt'];
+        $review['updatedAt'] = (new DateTimeImmutable())->format('Y-m-d\TH:i:s.uP');
+        $m['setup_reviews'] = array_values(array_filter($m['setup_reviews'], static fn(array $item): bool => $item['id'] !== $reviewId));
+        $m['lessons'] = array_values(array_filter($m['lessons'], static fn(array $item): bool => ($item['sourceReviewId'] ?? '') !== $reviewId));
+    }
     if ($kind === 'zone') array_unshift($m['zone_reviews'], $review); else array_unshift($m['setup_reviews'], $review);
     $lesson = paTrainingLessonFromFeedback($review);
     if ($lesson) array_unshift($m['lessons'], $lesson);
@@ -553,7 +818,7 @@ function paTrainingFeedbackSave(JsonStore $store, array $payload): array
     $m['setup_reviews'] = array_slice($m['setup_reviews'], 0, 2000);
     $m['lessons'] = array_slice($m['lessons'], 0, 1000);
     paTrainingSaveMemory($store, $m);
-    return ['ok' => true, 'review' => $review, 'pa_training_memory' => $m];
+    return ['ok' => true, 'review' => $review, 'pa_training_memory' => paTrainingMemory($store)];
 }
 
 function paTrainingLessonFromFeedback(array $review): ?array
@@ -562,6 +827,7 @@ function paTrainingLessonFromFeedback(array $review): ?array
     if ($note === '') return null;
     return [
         'id' => 'pa_lesson_' . time() . '_' . bin2hex(random_bytes(3)),
+        'sourceReviewId' => $review['id'] ?? '',
         'kind' => ($review['kind'] ?? '') === 'zone' ? 'zone' : 'trade_case',
         'title' => (string)($review['label'] ?? 'Bài h?c PA'),
         'content' => $note,
@@ -578,8 +844,8 @@ function savePaTrainingLesson(JsonStore $store, array $payload): array
     $text = paTrainingLimitText((string)($payload['sourceText'] ?? $payload['content'] ?? ''), 4000);
     if ($text === '') throw new InvalidArgumentException('Chua có n?i dung d? luu thành bài h?c.');
     $lesson = paTrainingDraftLesson($text, is_array($payload['zone'] ?? null) ? $payload['zone'] : null, is_array($payload['trade'] ?? null) ? $payload['trade'] : null, is_array($payload['context'] ?? null) ? $payload['context'] : [], 'chat_lesson', '', '', 'Bài h?c t? chat');
-    $m = paTrainingStoreLessons($store, paTrainingMemory($store), [$lesson]);
-    return ['ok' => true, 'lesson' => $lesson, 'pa_training_memory' => $m];
+    $m = paTrainingStoreLessons($store, paTrainingMemory($store, true), [$lesson]);
+    return ['ok' => true, 'lesson' => $lesson, 'pa_training_memory' => paTrainingMemory($store)];
 }
 
 function paTrainingDraftLesson(string $text, ?array $zone, ?array $trade, array $context, string $kind, string $title = '', string $tags = '', string $fallbackTitle = 'Bài h?c PA'): array
@@ -591,10 +857,13 @@ function paTrainingDraftLesson(string $text, ?array $zone, ?array $trade, array 
 
 function paTrainingStoreLessons(JsonStore $store, array $m, array $lessons): array
 {
+    // Chat receives active memory only. Reload the complete store before writing
+    // so adding a lesson cannot discard records retained in the trash.
+    $m = paTrainingMemory($store, true);
     foreach ($lessons as $lesson) if (is_array($lesson)) array_unshift($m['lessons'], $lesson);
     $m['lessons'] = array_slice(array_values($m['lessons']), 0, 1000);
     paTrainingSaveMemory($store, $m);
-    return $m;
+    return paTrainingMemory($store);
 }
 
 function paTrainingRelevantLessons(array $memory, array $context, ?array $zone, ?array $trade, int $limit = 8): array
@@ -628,6 +897,31 @@ function paTrainingChatHistoryAction(JsonStore $store, array $payload): array
     return ['ok' => true, 'messages' => array_slice($messages, -120), 'scope' => $scope, 'pa_training_memory' => paTrainingMemory($store)];
 }
 
+function paTrainingWorkspaceState(JsonStore $store, array $payload): array
+{
+    $current = $store->readJson('pa_training/workspace_state.json', []);
+    if (!is_array($current)) $current = [];
+    if (!array_key_exists('state', $payload)) return ['ok' => true, 'workspace' => $current];
+    $items = is_array($payload['state']) ? $payload['state'] : [];
+    foreach ($items as $key => $item) {
+        if (!is_array($item)) continue;
+        $symbol = paTrainingSymbol((string)($item['symbol'] ?? ''));
+        $timeframe = strtoupper((string)($item['timeframe'] ?? 'H4'));
+        if ($symbol === '' || !preg_match('/^[A-Z0-9]+$/', $symbol) || !preg_match('/^[A-Z0-9]+$/', $timeframe)) continue;
+        $replayIndex = $item['replayIndex'] ?? null;
+        $current[$symbol . '_' . $timeframe] = [
+            'symbol' => $symbol,
+            'timeframe' => $timeframe,
+            'selectedCaseId' => paTrainingLimitText((string)($item['selectedCaseId'] ?? ''), 160),
+            'replayIndex' => is_numeric($replayIndex) ? max(0, (int)$replayIndex) : null,
+            'replayEnabled' => ($item['replayEnabled'] ?? true) !== false,
+            'updatedAt' => (string)($item['updatedAt'] ?? gmdate('c')),
+        ];
+    }
+    $store->writeJson('pa_training/workspace_state.json', $current);
+    return ['ok' => true, 'workspace' => $current];
+}
+
 function paTrainingAppendChatMessages(JsonStore $store, array $new): array
 {
     $messages = $store->readJson('pa_training/chat_history.json', []);
@@ -642,16 +936,20 @@ function paTrainingChatMessagesForScope(array $messages, array $scope): array
 {
     $caseScopedMessages = ($scope['caseId'] ?? '') !== '' ? $messages : [];
     if (($scope['caseId'] ?? '') !== '') {
-        return array_values(array_filter($caseScopedMessages, static function (array $m) use ($scope): bool {
+        $filtered = array_values(array_filter($caseScopedMessages, static function (array $m) use ($scope): bool {
             $id = (string)($m['tradeId'] ?? $m['context']['selectedTeachingCaseId'] ?? $m['context']['selectedTradeId'] ?? '');
             return $id === (string)$scope['caseId'];
         }));
+        usort($filtered, static fn(array $a, array $b): int => strcmp((string)($a['createdAt'] ?? ''), (string)($b['createdAt'] ?? '')));
+        return $filtered;
     }
-    return array_values(array_filter($messages, static function (array $m) use ($scope): bool {
+    $filtered = array_values(array_filter($messages, static function (array $m) use ($scope): bool {
         $symbol = paTrainingSymbol((string)($m['symbol'] ?? $m['context']['symbol'] ?? ''));
         $tf = strtoupper((string)($m['timeframe'] ?? $m['context']['timeframe'] ?? ''));
         return (($scope['symbol'] ?? '') === '' || $symbol === '' || $symbol === $scope['symbol']) && (($scope['timeframe'] ?? '') === '' || $tf === '' || $tf === $scope['timeframe']);
     }));
+    usort($filtered, static fn(array $a, array $b): int => strcmp((string)($a['createdAt'] ?? ''), (string)($b['createdAt'] ?? '')));
+    return $filtered;
 }
 
 function paTrainingAiChat(JsonStore $store, array $payload): array
@@ -662,10 +960,11 @@ function paTrainingAiChat(JsonStore $store, array $payload): array
     $zone = is_array($payload['zone'] ?? null) ? $payload['zone'] : null;
     $trade = is_array($payload['trade'] ?? null) ? $payload['trade'] : null;
     $context = is_array($payload['context'] ?? null) ? $payload['context'] : [];
+    $chartAttachment = is_array($payload['chart_attachment'] ?? null) ? $payload['chart_attachment'] : [];
     $memory = paTrainingMemory($store);
     $actions = paTrainingChatActions($message, $context, $history);
     $lessons = paTrainingRelevantLessons($memory, $context, $zone, $trade, 8);
-    $ai = paTrainingOpenAICoachReply($message, $zone, $trade, $actions, $memory, $context, $history, $lessons);
+    $ai = paTrainingOpenAICoachReply($message, $zone, $trade, $actions, $memory, $context, $history, $lessons, $chartAttachment);
     $provider = is_array($ai['provider'] ?? null) ? $ai['provider'] : ['used' => 'openai_chat', 'status' => 'openai_failed', 'error' => 'OpenAI không tr? l?i du?c.'];
     $reply = ($ai['ok'] ?? false) === true ? (string)$ai['reply'] : paTrainingProviderErrorReply($provider, $actions);
     if (paTrainingShouldSaveChatLesson($message, $actions)) {
@@ -682,7 +981,7 @@ function paTrainingAiChat(JsonStore $store, array $payload): array
     return ['ok' => true, 'reply' => $reply, 'actions' => $actions, 'scope' => $scope, 'messages' => array_slice(paTrainingChatMessagesForScope($messages, $scope), -120), 'provider' => $provider, 'relevant_lessons' => $lessons, 'pa_training_memory' => $memory];
 }
 
-function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade, array $actions, array $memory, array $context = [], array $history = [], array $relevantLessons = []): array
+function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade, array $actions, array $memory, array $context = [], array $history = [], array $relevantLessons = [], array $chartAttachment = []): array
 {
     try {
         $provider = ProviderFactory::fromConfigFile()->create('openai_chat');
@@ -692,7 +991,7 @@ function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade
         }
         $messages = [[
             'role' => 'system',
-            'content' => "B?n là AI Coach trong app d?y Price Action Forex H4/M15. Tr? l?i ti?ng Vi?t ng?n, th?c t?. N?u user ra l?nh thao tác, xác nh?n thao tác app s? ch?y b?ng action n?i b?. Không h?a d?t l?nh th?t.",
+            'content' => "B?n là AI Coach trong app d?y Price Action Forex H4/M15. Tr? l?i ti?ng Vi?t ng?n, th?c t?. Khi có ảnh chart và hình vẽ, hãy phân tích đúng các vùng/đường được đánh dấu; dữ liệu tọa độ trong phần đính kèm mô tả chúng. Phân biệt nhận xét kỹ thuật với khuyến nghị chắc chắn; nêu điều kiện và rủi ro. N?u user ra l?nh thao tác, xác nh?n thao tác app s? ch?y b?ng action n?i b?. Không h?a d?t l?nh th?t.",
         ]];
         foreach (array_slice($history, -12) as $item) {
             if (!is_array($item)) continue;
@@ -700,15 +999,30 @@ function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade
             $content = trim((string)($item['content'] ?? ''));
             if ($content !== '') $messages[] = ['role' => $role, 'content' => paTrainingLimitText($content, 1200)];
         }
-        $messages[] = ['role' => 'user', 'content' => json_encode([
+        $userContent = json_encode([
             'user_message' => $message,
             'chart_context' => $context,
+            'chart_annotations' => [
+                'symbol' => (string)($chartAttachment['symbol'] ?? ''),
+                'timeframe' => (string)($chartAttachment['timeframe'] ?? ''),
+                'drawings' => is_array($chartAttachment['drawings'] ?? null) ? array_slice($chartAttachment['drawings'], 0, 12) : [],
+                'note' => 'Ảnh chart (nếu có) thể hiện biểu đồ hiện tại cùng các hình vẽ được gửi để hỏi.',
+            ],
             'selected_zone' => $zone,
             'selected_trade_case' => $trade,
             'app_actions_detected' => $actions,
             'relevant_lessons' => $relevantLessons,
             'memory_counts' => ['zone_reviews' => count($memory['zone_reviews'] ?? []), 'setup_reviews' => count($memory['setup_reviews'] ?? []), 'lessons' => count($memory['lessons'] ?? [])],
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: $message];
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: $message;
+        $imageDataUrl = (string)($chartAttachment['imageDataUrl'] ?? '');
+        if ($imageDataUrl !== '' && strlen($imageDataUrl) <= 3500000 && preg_match('#^data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}$#', $imageDataUrl) === 1) {
+            $messages[] = ['role' => 'user', 'content' => [
+                ['type' => 'text', 'text' => $userContent],
+                ['type' => 'image_url', 'image_url' => ['url' => $imageDataUrl, 'detail' => 'low']],
+            ]];
+        } else {
+            $messages[] = ['role' => 'user', 'content' => $userContent];
+        }
         $response = $provider->complete(['messages' => $messages, 'model_alias' => 'default', 'response_format' => 'plain_text']);
         if (($response['ok'] ?? false) !== true) {
             return ['ok' => false, 'provider' => ['used' => 'openai_chat', 'status' => (string)($response['error']['category'] ?? 'openai_failed'), 'error' => (string)($response['error']['message'] ?? 'OpenAI không tr? l?i du?c.')]];
@@ -882,7 +1196,11 @@ function openAiLocalSettingsSave(array $payload): array
     if ($apiKey !== '') updateEnvLocal('OPENAI_API_KEY', $apiKey);
     updateEnvLocal('OPENAI_MODEL_DEFAULT', $model);
     writeOpenAiLocalConfig($enabled, $model, $payload);
-    return openAiLocalSettingsStatus();
+    $status = openAiLocalSettingsStatus();
+    if ($apiKey !== '' && ($status['api_key_configured'] ?? false) !== true) {
+        throw new RuntimeException('Đã ghi cấu hình nhưng máy chủ chưa nạp được OpenAI API key. Kiểm tra quyền đọc .env.local và biến OPENAI_API_KEY trên hosting.');
+    }
+    return $status;
 }
 
 function openAiLocalSettingsDeleteKey(): array { updateEnvLocal('OPENAI_API_KEY', ''); return openAiLocalSettingsStatus(); }
@@ -903,13 +1221,23 @@ function updateEnvLocal(string $key, string $value): void
     }
     unset($line);
     if (!$found) $lines[] = $key . '=' . $value;
-    file_put_contents($path, implode(PHP_EOL, $lines) . PHP_EOL, LOCK_EX);
+    $written = @file_put_contents($path, implode(PHP_EOL, $lines) . PHP_EOL, LOCK_EX);
+    if ($written === false) {
+        throw new RuntimeException('Máy chủ không ghi được .env.local. Hãy cấp quyền ghi cho PHP hoặc cấu hình OPENAI_API_KEY trong biến môi trường của hosting.');
+    }
+    // Make the saved value visible to status checks and provider creation in this request.
+    putenv($key . '=' . $value);
+    $_ENV[$key] = $value;
+    $_SERVER[$key] = $value;
 }
 
 function writeOpenAiLocalConfig(bool $enabled, string $model, array $payload): void
 {
     $config = ['ai_providers' => ['default_provider' => $enabled ? 'openai_chat' : 'mock', 'providers' => ['openai_chat' => ['enabled' => $enabled, 'default_model' => $model, 'model_aliases' => ['default' => $model], 'max_completion_tokens' => max(1, (int)($payload['maxCompletionTokens'] ?? 1200)), 'budget' => ['daily_budget_usd' => max(0.01, (float)($payload['dailyBudgetUsd'] ?? 1)), 'max_calls_per_day' => max(0, (int)($payload['maxCallsPerDay'] ?? 100))]]]]];
-    file_put_contents(__DIR__ . '/config/local.php', "<?php\nreturn " . var_export($config, true) . ";\n", LOCK_EX);
+    $written = @file_put_contents(__DIR__ . '/config/local.php', "<?php\nreturn " . var_export($config, true) . ";\n", LOCK_EX);
+    if ($written === false) {
+        throw new RuntimeException('Máy chủ không ghi được config/local.php. Hãy cấp quyền ghi cho PHP trên hosting.');
+    }
 }
 
 function llmGatewayTestCall(array $payload): array
