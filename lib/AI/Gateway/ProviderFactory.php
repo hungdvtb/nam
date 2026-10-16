@@ -143,7 +143,12 @@ final class ProviderFactory
             if (!preg_match('/^[A-Z_][A-Z0-9_]*$/', $name)) {
                 continue;
             }
-            if (getenv($name) !== false || isset($_ENV[$name]) || isset($_SERVER[$name])) {
+            // Hosting panels sometimes export optional secrets as empty strings.
+            // Treat those as unset so values saved in .env.local can be loaded.
+            $existing = getenv($name);
+            if (($existing !== false && trim((string)$existing) !== '')
+                || (isset($_ENV[$name]) && trim((string)$_ENV[$name]) !== '')
+                || (isset($_SERVER[$name]) && trim((string)$_SERVER[$name]) !== '')) {
                 continue;
             }
 
