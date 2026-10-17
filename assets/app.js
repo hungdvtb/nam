@@ -4369,12 +4369,15 @@
 
     function extractPaTrainingSymbolFromChatText(text) {
         const match = String(text || '').match(/\b([A-Z]{3})[\s_\/.-]?([A-Z]{3})\b/i);
-        if (!match) return '';
-        const known = new Set(['AUD', 'CAD', 'CHF', 'EUR', 'GBP', 'JPY', 'NZD', 'USD', 'XAU', 'XAG', 'BTC', 'ETH']);
-        const base = String(match[1] || '').toUpperCase();
-        const quote = String(match[2] || '').toUpperCase();
-        if (!known.has(base) || !known.has(quote)) return '';
-        return normalizeSymbolKey(base + quote);
+        if (match) {
+            const known = new Set(['AUD', 'CAD', 'CHF', 'EUR', 'GBP', 'JPY', 'NZD', 'USD', 'XAU', 'XAG', 'BTC', 'ETH']);
+            const base = String(match[1] || '').toUpperCase();
+            const quote = String(match[2] || '').toUpperCase();
+            if (known.has(base) && known.has(quote)) return normalizeSymbolKey(base + quote);
+        }
+        const aliases = { au: 'AUDUSD', gu: 'GBPUSD', eu: 'EURUSD', uj: 'USDJPY', uc: 'USDCAD', nu: 'NZDUSD', aj: 'AUDJPY', gj: 'GBPJPY', vang: 'XAUUSD', gold: 'XAUUSD' };
+        const tokens = foldPaTrainingCommandText(text).match(/[a-z0-9]+/g) || [];
+        return tokens.map((token) => aliases[token]).find(Boolean) || '';
     }
 
     function extractPaTrainingTimeframeFromChatText(text) {

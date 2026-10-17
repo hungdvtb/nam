@@ -1202,6 +1202,7 @@ function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade
             'role' => 'system',
             'content' => "B?n là AI Coach trong app d?y Price Action Forex H4/M15. Tr? l?i ti?ng Vi?t ng?n, th?c t?. Khi có ảnh chart và hình vẽ, hãy phân tích đúng các vùng/đường được đánh dấu; dữ liệu tọa độ trong phần đính kèm mô tả chúng. Phân biệt nhận xét kỹ thuật với khuyến nghị chắc chắn; nêu điều kiện và rủi ro. N?u user ra l?nh thao tác, xác nh?n thao tác app s? ch?y b?ng action n?i b?. Không h?a d?t l?nh th?t.",
         ]];
+        $messages[] = ['role' => 'system', 'content' => 'Only say an app action completed when app_actions_detected contains the matching action. If none is detected, ask for clarification and do not claim that you are opening or changing a chart.'];
         foreach (array_slice($history, -12) as $item) {
             if (!is_array($item)) continue;
             $role = in_array(($item['role'] ?? ''), ['user', 'assistant'], true) ? (string)$item['role'] : 'user';
@@ -1278,10 +1279,29 @@ function paTrainingShouldSaveChatLesson(string $message, array $actions): bool
 
 function paTrainingExtractSymbolFromText(string $message): string
 {
-    if (!preg_match('/\b([A-Z]{3})[\s_\/.-]?([A-Z]{3})\b/i', $message, $m)) return '';
-    $known = ['AUD','CAD','CHF','EUR','GBP','JPY','NZD','USD','XAU','XAG','BTC','ETH'];
-    if (!in_array(strtoupper($m[1]), $known, true) || !in_array(strtoupper($m[2]), $known, true)) return '';
-    return paTrainingSymbol($m[1] . $m[2]);
+    if (preg_match('/\b([A-Z]{3})[\s_\/.-]?([A-Z]{3})\b/i', $message, $m)) {
+        $known = ['AUD','CAD','CHF','EUR','GBP','JPY','NZD','USD','XAU','XAG','BTC','ETH'];
+        if (in_array(strtoupper($m[1]), $known, true) && in_array(strtoupper($m[2]), $known, true)) {
+            return paTrainingSymbol($m[1] . $m[2]);
+        }
+    }
+
+    $tokens = preg_split('/[^\p{L}\p{N}]+/u', paTrainingLower($message), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $aliases = [
+        'au' => 'AUDUSD', 'âu' => 'AUDUSD',
+        'gu' => 'GBPUSD',
+        'eu' => 'EURUSD',
+        'uj' => 'USDJPY',
+        'uc' => 'USDCAD',
+        'nu' => 'NZDUSD',
+        'aj' => 'AUDJPY',
+        'gj' => 'GBPJPY',
+        'vàng' => 'XAUUSD', 'gold' => 'XAUUSD',
+    ];
+    foreach ($tokens as $token) {
+        if (isset($aliases[$token])) return $aliases[$token];
+    }
+    return '';
 }
 
 function paTrainingExtractSymbolFromHistory(array $history): string
@@ -1308,7 +1328,7 @@ function paTrainingChatActions(string $message, array $context = [], array $hist
     $wantsNext = paTrainingContainsAny($text, ['ti?p theo','vùng ti?p','sang vùng','ca ti?p','l?nh ti?p','trade ti?p','case ti?p','next']);
     $wantsPrevious = paTrainingContainsAny($text, ['quay l?i','vùng tru?c','ca tru?c','l?nh tru?c','previous']);
     $timeframeTarget = paTrainingExtractTimeframeFromText($message);
-    $wantsOpen = paTrainingContainsAny($text, ['m?','mo','xem','chart','bi?u d?','bieu do','chuy?n','chuyen','d?i','doi','sang']);
+    $wantsOpen = paTrainingContainsAny($text, ['mở','mo','xem','chart','biểu đồ','bieu do','chuyển','chuyen','đổi','doi','sang']);
     $symbolTarget = paTrainingExtractSymbolFromText($message);
     if ($symbolTarget === '' && $wantsOpen && paTrainingContainsAny($text, ['dúng','dung','ok','?','uh','uhm','du?c','duoc','m? di','mo di'])) $symbolTarget = paTrainingExtractSymbolFromHistory($history);
     $wantsIndicator = paTrainingContainsAny($text, ['v?','ve','thêm','them','b?t','bat','t?t','tat','?n','an','hi?n th?','hien thi','cho vào','màu','mau','ma20','ema20','ma50','ema50','ma200','ema200','rsi','macd','bollinger','vwap']);
