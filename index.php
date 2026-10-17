@@ -1992,7 +1992,7 @@
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
     <script src="assets/pa-workspace.js?v=20261017-pa-sync-null-fix"></script>
-    <script src="assets/app.js?v=20261017-pa-adaptive-cases-v3"></script>
+    <script src="assets/app.js?v=20261017-pa-chat-history-v2"></script>
 </body>
 </html>
 

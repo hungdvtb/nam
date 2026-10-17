@@ -1274,19 +1274,9 @@ function paTrainingAppendChatMessages(JsonStore $store, array $new): array
 
 function paTrainingChatMessagesForScope(array $messages, array $scope): array
 {
-    $caseScopedMessages = ($scope['caseId'] ?? '') !== '' ? $messages : [];
-    if (($scope['caseId'] ?? '') !== '') {
-        $filtered = array_values(array_filter($caseScopedMessages, static function (array $m) use ($scope): bool {
-            $id = (string)($m['tradeId'] ?? $m['context']['selectedTeachingCaseId'] ?? $m['context']['selectedTradeId'] ?? '');
-            return $id === (string)$scope['caseId'];
-        }));
-        usort($filtered, static fn(array $a, array $b): int => strcmp((string)($a['createdAt'] ?? ''), (string)($b['createdAt'] ?? '')));
-        return $filtered;
-    }
     $filtered = array_values(array_filter($messages, static function (array $m) use ($scope): bool {
         $symbol = paTrainingSymbol((string)($m['symbol'] ?? $m['context']['symbol'] ?? ''));
-        $tf = strtoupper((string)($m['timeframe'] ?? $m['context']['timeframe'] ?? ''));
-        return (($scope['symbol'] ?? '') === '' || $symbol === '' || $symbol === $scope['symbol']) && (($scope['timeframe'] ?? '') === '' || $tf === '' || $tf === $scope['timeframe']);
+        return ($scope['symbol'] ?? '') === '' || $symbol === '' || $symbol === $scope['symbol'];
     }));
     usort($filtered, static fn(array $a, array $b): int => strcmp((string)($a['createdAt'] ?? ''), (string)($b['createdAt'] ?? '')));
     return $filtered;

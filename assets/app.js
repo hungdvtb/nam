@@ -633,6 +633,7 @@
         paTrainingChatLoading: false,
         paTrainingChatHistoryLoadingKey: '',
         paTrainingChatLoadedKey: '',
+        paTrainingChatRevision: 0,
         paTrainingChatError: '',
         paActionHelpClickTimer: null,
         paTrainingSessionDrafts: {},
@@ -3328,14 +3329,16 @@
     function paTrainingCurrentSessionMessages(trade = paTrainingSelectedTrade(), zone = paTrainingSelectedZone()) {
         const context = paTrainingChatContext(zone, trade);
         const tradeId = trade?.id || context.selectedTeachingCaseId || context.selectedTradeId || '';
-        const zoneId = zone?.id || context.selectedZoneId || '';
         return normalizePaTrainingChatMessages(state.paTrainingChatMessages, context).filter((message) => {
             const msgTrade = message.tradeId || message.context?.selectedTeachingCaseId || message.context?.selectedTradeId || '';
-            const msgZone = message.zoneId || message.context?.selectedZoneId || '';
             if (tradeId) return msgTrade === tradeId;
-            if (zoneId) return msgZone === zoneId;
-            return true;
+            return sameSymbol(message.symbol || message.context?.symbol || '', context.symbol);
         });
+    }
+
+    function paTrainingVisibleChatMessages(context = paTrainingChatContext()) {
+        return normalizePaTrainingChatMessages(state.paTrainingChatMessages, context)
+            .filter((message) => sameSymbol(message.symbol || message.context?.symbol || '', context.symbol));
     }
 
     function paTrainingSessionAutoNote(messages, draft) {
@@ -4237,9 +4240,7 @@
     }
     function paTrainingChatScopeKey(context = {}) {
         const symbol = String(context.symbol || 'GLOBAL').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'GLOBAL';
-        const timeframe = String(context.timeframe || 'H4').toUpperCase();
-        const caseId = String(context.selectedTeachingCaseId || context.selectedTradeId || '').replace(/[^a-zA-Z0-9_.:-]/g, '_');
-        return caseId ? `${symbol}_${timeframe}_${caseId}` : `${symbol}_${timeframe}`;
+        return symbol;
     }
 
     function paTrainingChatMessageId() {
@@ -4282,7 +4283,12 @@
 
     function loadPaTrainingChatLocalMessages(scopeKey, context = {}) {
         const store = readPaTrainingChatLocalStore();
-        return normalizePaTrainingChatMessages(store[scopeKey] || [], context);
+        const symbol = String(context.symbol || 'GLOBAL').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'GLOBAL';
+        const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1'];
+        const legacyKeys = Object.keys(store).filter((key) => timeframes.some((timeframe) => key === `${symbol}_${timeframe}` || key.startsWith(`${symbol}_${timeframe}_`)));
+        const messages = [scopeKey, ...legacyKeys].flatMap((key) => Array.isArray(store[key]) ? store[key] : []);
+        const unique = [...new Map(messages.map((message) => [message.id || `${message.role}:${message.createdAt}:${message.content}`, message])).values()];
+        return normalizePaTrainingChatMessages(unique, context);
     }
 
     function persistPaTrainingChatMessages(scopeKey = '', messages = state.paTrainingChatMessages, context = paTrainingChatContext()) {
@@ -4307,9 +4313,10 @@
         state.paTrainingChatLoadedKey = scopeKey;
         state.paTrainingChatMessages = loadPaTrainingChatLocalMessages(scopeKey, context);
         state.paTrainingChatHistoryLoadingKey = scopeKey;
+        const requestRevision = state.paTrainingChatRevision;
         api('pa_training_chat_history', { context })
             .then((data) => {
-                if (state.paTrainingChatLoadedKey !== scopeKey) return;
+                if (state.paTrainingChatLoadedKey !== scopeKey || state.paTrainingChatRevision !== requestRevision) return;
                 if (Array.isArray(data.messages)) {
                     state.paTrainingChatMessages = normalizePaTrainingChatMessages(data.messages, context);
                     persistPaTrainingChatMessages(scopeKey, state.paTrainingChatMessages, context);
@@ -4354,7 +4361,7 @@
         if (input) input.disabled = state.paTrainingChatLoading;
         if (sendBtn) sendBtn.disabled = state.paTrainingChatLoading;
 
-        const messages = paTrainingCurrentSessionMessages(trade, zone).slice(-40);
+        const messages = paTrainingVisibleChatMessages(context).slice(-40);
         const activeSymbol = trade?.symbol || zone?.symbol || state.activeMarketData?.symbol || state.paTrainingSymbol || 'chart hiện tại';
         const activeTimeframe = trade ? (state.activeMarketData?.timeframe || state.paTrainingChartTimeframe || 'H4') : (zone?.timeframe || state.activeMarketData?.timeframe || state.paTrainingChartTimeframe || 'H4');
         const empty = trade
@@ -4397,6 +4404,7 @@
         const chartAttachment = paTrainingChartQuestionAttachment(isPaTrainingDrawingRequest(message));
         const chatContext = paTrainingChatContext(zone, trade, tradeSnapshot);
         const scopeKey = paTrainingChatScopeKey(chatContext);
+        state.paTrainingChatRevision += 1;
         state.paTrainingChatLoadedKey = scopeKey;
         const userMessage = normalizePaTrainingChatMessages([{
             role: 'user',

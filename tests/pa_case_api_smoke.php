@@ -30,6 +30,18 @@ try {
     ]);
     $history = paTrainingChatHistoryAction($store, ['context'=>['symbol'=>'TEST','timeframe'=>'H4']])['messages'];
     checkCaseApi($history[0]['id']==='old' && $history[1]['id']==='new', 'chat history sorted oldest to newest for latest scroll');
+    $store->writeJson('pa_training/chat_history.json', [
+        ['id'=>'zone_a','role'=>'user','content'=>'Vẽ vùng sell','createdAt'=>'2026-10-12T04:00:00Z','symbol'=>'TEST','timeframe'=>'H4','zoneId'=>'zone_a'],
+        ['id'=>'zone_b','role'=>'assistant','content'=>'Đã vẽ','createdAt'=>'2026-10-12T05:00:00Z','symbol'=>'TEST','timeframe'=>'H4','zoneId'=>'zone_b'],
+        ['id'=>'case_a','role'=>'user','content'=>'Dạy ca này','createdAt'=>'2026-10-12T06:00:00Z','symbol'=>'TEST','timeframe'=>'M15','tradeId'=>'case_a'],
+        ['id'=>'other_symbol','role'=>'user','content'=>'Cặp khác','createdAt'=>'2026-10-12T07:00:00Z','symbol'=>'OTHER','timeframe'=>'H4'],
+    ]);
+    $historyAfterDrawing = paTrainingChatHistoryAction($store, ['context'=>['symbol'=>'TEST','timeframe'=>'H4','selectedZoneId'=>'zone_b']])['messages'];
+    checkCaseApi(count($historyAfterDrawing)===3, 'chart conversation must survive a zone change after an AI drawing');
+    $historyOnM15 = paTrainingChatHistoryAction($store, ['context'=>['symbol'=>'TEST','timeframe'=>'M15']])['messages'];
+    checkCaseApi(count($historyOnM15)===3, 'chart conversation must survive an H4/M15 switch after an AI drawing');
+    $historyInCase = paTrainingChatHistoryAction($store, ['context'=>['symbol'=>'TEST','timeframe'=>'M15','selectedTeachingCaseId'=>'case_a']])['messages'];
+    checkCaseApi(count($historyInCase)===3, 'selecting a case must not hide earlier chat for the same symbol');
     paTrainingWorkspaceState($store, ['state'=>['TEST_H4'=>[
         'symbol'=>'TEST','timeframe'=>'H4','selectedCaseId'=>'case_x','replayIndex'=>321,
         'skippedCaseIds'=>['case_one','case_two'],

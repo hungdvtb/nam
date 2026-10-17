@@ -152,7 +152,12 @@ $assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember th
 $assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
 $assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
 $assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
-$assertContains($index, 'assets/app.js?v=20261017-pa-adaptive-cases-v3', 'PA case-learning changes must use a fresh frontend cache version');
+$assertContains($index, 'assets/app.js?v=20261017-pa-chat-history-v2', 'PA chat history fix must use a fresh frontend cache version');
+$assertContains($app, 'state.paTrainingChatRevision !== requestRevision', 'stale history requests must not erase messages sent while loading');
+$assertContains($app, 'return sameSymbol(message.symbol || message.context?.symbol ||', 'chart conversation must remain visible when the selected PA zone changes');
+$assertContains($app, 'return symbol;', 'chat scope must survive chart and case switches for the same symbol');
+$assertContains($app, 'const legacyKeys = Object.keys(store).filter(', 'new chat scope must recover existing browser history');
+$assertContains($app, 'const messages = paTrainingVisibleChatMessages(context).slice(-40);', 'chart chat must show the symbol conversation even when a teaching case is selected');
 $assertContains($api, 'PaAdaptiveCaseSelector::select(', 'teaching-case API must rank from saved feedback');
 $assertContains($app, 'await loadPaTrainingTradeCases({ silent: true, advanceAfterSave: true })', 'saving a taught case must select the next case using the updated memory');
 $assertContains($app, 'trade.learning.reason', 'PA case details must explain the learned recommendation');
@@ -223,7 +228,7 @@ $assertContains($css ?? '', '.pa-replay-toggle-control', 'CSS must hide replay c
 $assertContains($api, 'trade_cases', 'API must return generated teaching cases to the frontend');
 $assertContains($api, 'pa_training_chat_history', 'API must expose saved PA chat history');
 $assertContains($api, '\'caseId\' => $caseId', 'API chat scope must include the selected teaching case id');
-$assertContains($api, '($scope[\'caseId\'] ?? \'\') !== \'\' ? $messages', 'API must return full chat history for a selected teaching case');
+$assertContains($api, 'function paTrainingChatMessagesForScope', 'API must return chart conversation history');
 $assertContains($api, 'strlen($json) > 500000', 'API must preserve larger PA session snapshots before falling back to preview');
 $assertContains($api, 'function paTrainingOpenAICoachReply', 'PA AI Coach must call the OpenAI provider for real chat replies');
 $assertContains($api, 'streamMarketDataResponse($payload)', 'large MT5 chart responses must stream to avoid PHP memory exhaustion');
