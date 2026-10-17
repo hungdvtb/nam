@@ -307,6 +307,8 @@ body[data-active-tab="pa-training"] #paTrainingZonesView.is-pa-queue-open {
     line-height: 1.35;
     overflow-wrap: anywhere;
 }
+.pa-case-level-reset-row { display: flex; justify-content: flex-end; margin: 2px 0; }
+.pa-case-level-reset { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 9px; font-size: 11px; }
 body.is-dark .pa-case-row { background: var(--pa-surface); }
 body.is-dark .pa-case-row:hover, body.is-dark .pa-case-row.is-active { background: #1b3354; border-color: #5278ad; }
 body.is-dark .pa-case-direction.is-demand { color: #65e7bb; background: #123e38; }

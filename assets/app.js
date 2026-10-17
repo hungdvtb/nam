@@ -3513,6 +3513,27 @@
         return `${side} ${symbol}${time ? ` | ${time}` : ''}`;
     }
 
+    function paTrainingCaseHasRestorableChanges(trade) {
+        const original = trade?.originalTrade;
+        if (!original) return false;
+        return [
+            'entryPrice', 'initialStop', 'targetPrice', 'targetPrice2', 'rr', 'rrTarget2', 'riskR',
+            'zoneLow', 'zoneHigh', 'exitIndex', 'exitCandleNumber', 'exitTime', 'exitPrice', 'exitType',
+            'resultStatus', 'sameBarAmbiguous', 'netR', 'pnlUsd', 'mfeR', 'maeR', 'holdingBars',
+            'corrected', 'correctionNote',
+        ].some((key) => {
+            const current = trade[key];
+            const initial = original[key];
+            if (current == null && initial == null) return false;
+            const currentNumber = Number(current);
+            const initialNumber = Number(initial);
+            if (current != null && initial != null && Number.isFinite(currentNumber) && Number.isFinite(initialNumber)) {
+                return Math.abs(currentNumber - initialNumber) > Math.max(1e-12, Math.abs(initialNumber) * 1e-12);
+            }
+            return String(current ?? '') !== String(initial ?? '');
+        });
+    }
+
     function paTrainingCaseCard(item, index = 0) {
         const active = item.id === state.paTrainingSelectedCaseId;
         const reviewed = item.review ? 'is-reviewed' : '';
@@ -3639,6 +3660,7 @@
             const entryReason = trade.entryReason || trade.reason || 'Chưa có lý do vào lệnh.';
             const riskReason = trade.riskReason || `SL ${formatPrice(trade.initialStop, trade.symbol)} · TP ${formatPrice(trade.targetPrice, trade.symbol)}`;
             const exitReason = trade.exitReason || 'Chưa có kết quả thoát lệnh.';
+            const canRestoreLevels = isTeaching && paTrainingCaseHasRestorableChanges(trade);
             target.innerHTML = `
                 <div class="pa-ai-zone-card is-${escapeAttr(resultClass)} is-case-card">
                     <span>${isTeaching ? 'CA DẠY ĐANG XEM' : 'CA TRADE ĐANG XEM'}</span>
@@ -3649,6 +3671,7 @@
                         <span><b>SL</b><strong>${escapeHtml(formatPrice(trade.initialStop, trade.symbol))}</strong></span>
                         <span><b>TP · ${escapeHtml(formatFixed(trade.rr ?? 1, 2))}R</b><strong>${escapeHtml(formatPrice(trade.targetPrice, trade.symbol))}</strong></span>
                     </div>
+                    ${canRestoreLevels ? `<div class="pa-case-level-reset-row"><button class="button secondary pa-case-level-reset" type="button" data-pa-case-level-reset title="Khôi phục Entry, SL, TP và kết quả ban đầu của ca" aria-label="Khôi phục Entry, SL, TP và kết quả ban đầu của ca">↶ Khôi phục gốc</button></div>` : ''}
                     <small>Kéo đường Entry, SL hoặc TP trên biểu đồ để chỉnh mức giá.</small>
                     <small>${escapeHtml(resultText)} | ${escapeHtml(zoneText)}</small>
                     ${hasOutcome ? `<small>Thoát ${escapeHtml(formatPrice(trade.exitPrice, trade.symbol))} · ${escapeHtml(formatChartTime(trade.exitTime || ''))}</small>` : ''}
@@ -15909,6 +15932,12 @@
                 });
             });
         });
+        $('#paTrainingCoachZoneSummary')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-pa-case-level-reset]');
+            if (!button) return;
+            event.preventDefault();
+            resetPaTrainingCaseLevels();
+        });
         $$('[data-pa-case-skip]').forEach((button) => {
             button.addEventListener('click', (event) => {
                 runPaActionButtonClick(button, event, skipPaTrainingCurrentCase);
@@ -17125,6 +17154,34 @@
         renderPaTraining();
         renderPaTrainingSessionStrip();
         if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+    }
+
+    function resetPaTrainingCaseLevels() {
+        const trade = paTrainingSelectedTeachingCase();
+        const original = trade?.originalTrade;
+        if (!trade || !original || !paTrainingCaseHasRestorableChanges(trade)) return;
+        const fields = [
+            'entryPrice', 'initialStop', 'targetPrice', 'targetPrice2', 'rr', 'rrTarget2', 'riskR',
+            'zoneLow', 'zoneHigh', 'exitIndex', 'exitCandleNumber', 'exitTime', 'exitPrice', 'exitType',
+            'resultStatus', 'sameBarAmbiguous', 'netR', 'pnlUsd', 'mfeR', 'maeR', 'holdingBars',
+            'corrected', 'correctionNote',
+        ];
+        fields.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(original, key)) trade[key] = original[key];
+        });
+        const zoneLow = original.zoneLow ?? original.zone?.low;
+        const zoneHigh = original.zoneHigh ?? original.zone?.high;
+        if (trade.zone && zoneLow != null && zoneHigh != null) {
+            trade.zone = {...trade.zone, low: zoneLow, high: zoneHigh};
+        }
+        const sessionKey = paTrainingSessionKey(trade, paTrainingSelectedZone());
+        if (state.paTrainingSessionDrafts[sessionKey]?.decision === 'adjusted_case') {
+            delete state.paTrainingSessionDrafts[sessionKey];
+        }
+        renderPaTraining();
+        renderPaTrainingSessionStrip();
+        if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+        showToast('Đã khôi phục Entry, SL, TP và kết quả ban đầu của ca.');
     }
 
     async function openPaSavedCase(review) {

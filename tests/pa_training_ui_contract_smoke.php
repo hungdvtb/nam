@@ -136,7 +136,12 @@ $assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember th
 $assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
 $assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
 $assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
-$assertContains($index, 'assets/app.js?v=20261017-pa-memory-draw-fix', 'PA fixes must use a fresh frontend cache version');
+$assertContains($index, 'assets/app.js?v=20261017-pa-case-level-reset', 'PA case reset must use a fresh frontend cache version');
+$assertContains($index, 'assets/pa-workspace.css?v=20261017-pa-case-level-reset', 'PA case reset styles must use a fresh cache version');
+$assertContains($app, 'function paTrainingCaseHasRestorableChanges', 'adjusted PA teaching cases must detect changes against the original setup');
+$assertContains($app, 'data-pa-case-level-reset', 'adjusted PA teaching cases must expose a restore-original-levels button');
+$assertContains($app, 'function resetPaTrainingCaseLevels', 'PA teaching cases must restore original levels and result');
+$assertContains($app, "trade[key] = original[key]", 'PA case reset must restore original setup values');
 $assertContains($app, "magnetMode: 'off'", 'chart drawing must not snap to candle prices by default');
 $assertContains($app, "settings.magnetMode === 'strong' && settings.magnetModeExplicit !== true", 'legacy strong magnet settings must migrate to off unless explicitly selected');
 $assertContains($app, '(event.clientX - rect.left) * (rect.width ? width / rect.width : 1)', 'drawing pointer coordinates must scale to the chart layout dimensions');

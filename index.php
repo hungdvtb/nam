@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
     <link rel="stylesheet" href="assets/styles.css?v=20261015-case-drag-overlay">
-    <link rel="stylesheet" href="assets/pa-workspace.css?v=20261015-clear-skip-case-button">
+    <link rel="stylesheet" href="assets/pa-workspace.css?v=20261017-pa-case-level-reset">
 </head>
 <body>
     <div class="app-shell">
@@ -1997,7 +1997,7 @@
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
     <script src="assets/pa-workspace.js?v=20261016-trade-level-markers"></script>
-    <script src="assets/app.js?v=20261017-pa-memory-draw-fix"></script>
+    <script src="assets/app.js?v=20261017-pa-case-level-reset"></script>
 </body>
 </html>
 
