@@ -35,6 +35,7 @@ $tests = [
     'research lab two-agent smoke' => 'testResearchLabSmokeFile',
     'price action training ui smoke' => 'testPaTrainingSmokeFile',
     'price action workspace persistence api smoke' => 'testPaCaseApiSmokeFile',
+    'price action adaptive case selection' => 'testPaAdaptiveCaseSelectorSmokeFile',
     'price action memory sync merge' => 'testPaTrainingSyncSmokeFile',
     'market files streaming metadata smoke' => 'testMarketFileMetadataSmokeFile',
     'llm provider framework smoke' => 'testLLMProviderFrameworkSmokeFiles',
@@ -300,6 +301,13 @@ function testPaCaseApiSmokeFile(): void
     $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/pa_case_api_smoke.php') . ' 2>&1';
     $output = shell_exec($cmd);
     assertTrue(is_string($output) && str_contains($output, 'pa_case_api_smoke passed'), 'pa_case_api_smoke.php should pass. Output: ' . (string)$output);
+}
+
+function testPaAdaptiveCaseSelectorSmokeFile(): void
+{
+    $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/pa_adaptive_case_selector_smoke.php') . ' 2>&1';
+    $output = shell_exec($cmd);
+    assertTrue(is_string($output) && str_contains($output, 'pa_adaptive_case_selector_smoke passed'), 'pa_adaptive_case_selector_smoke.php should pass. Output: ' . (string)$output);
 }
 
 function testMarketFileMetadataSmokeFile(): void

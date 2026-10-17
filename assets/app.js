@@ -619,6 +619,9 @@
         paTrainingZones: [],
         paTrainingTradeCases: [],
         paTrainingSelectedCaseId: '',
+        paTrainingSkippedCaseIds: [],
+        paTrainingQueueLoaded: false,
+        paTrainingResumeLoading: false,
         paTrainingCaseLoading: false,
         paTrainingCaseError: '',
         paTrainingSelectedZoneId: '',
@@ -1216,25 +1219,32 @@
     }
 
     async function resumePaTrainingWorkspace(remembered = savedPaWorkspace()) {
+        if (state.paTrainingResumeLoading) return;
         const symbol = remembered.symbol || state.paTrainingSymbol;
         const timeframe = remembered.timeframe || state.paTrainingTimeframe || 'H4';
         const requestedChartTimeframe = String(remembered.chartTimeframe || timeframe || 'H4').toUpperCase();
         const chartFile = symbol ? findBestMarketFileForSymbol(symbol, requestedChartTimeframe) : null;
         if (!chartFile) return;
-        const chartTimeframe = String(chartFile.timeframe || requestedChartTimeframe).toUpperCase();
-        state.paTrainingSymbol = symbol;
-        state.paTrainingTimeframe = timeframe;
-        state.paTrainingChartTimeframe = chartTimeframe;
-        state.paTrainingSelectedCaseId = remembered.selectedCaseId || '';
-        await loadPaTrainingTradeCases({ silent: true, restoreProgress: true, chartTimeframe });
-        if (!state.activeMarketData || !sameSymbol(state.activeMarketData.symbol, symbol)
-            || String(state.activeMarketData.timeframe || '').toUpperCase() !== chartTimeframe) {
-            await loadPaTrainingChartForSymbol(symbol, chartTimeframe, { silent: true });
-        }
-        if (state.activeMarketData && sameSymbol(state.activeMarketData.symbol, symbol)
-            && String(state.activeMarketData.timeframe || '').toUpperCase() === chartTimeframe) {
-            restorePaTrainingChartViewport(state.activeMarketData, remembered);
-            persistPaWorkspace({ chartTimeframe, selectedCaseId: state.paTrainingSelectedCaseId });
+        state.paTrainingResumeLoading = true;
+        try {
+            const chartTimeframe = String(chartFile.timeframe || requestedChartTimeframe).toUpperCase();
+            state.paTrainingSymbol = symbol;
+            state.paTrainingTimeframe = timeframe;
+            state.paTrainingChartTimeframe = chartTimeframe;
+            state.paTrainingSelectedCaseId = remembered.selectedCaseId || '';
+            state.paTrainingSkippedCaseIds = Array.isArray(remembered.skippedCaseIds) ? remembered.skippedCaseIds.slice(0, 500) : [];
+            await loadPaTrainingTradeCases({ silent: true, restoreProgress: true, chartTimeframe });
+            if (!state.activeMarketData || !sameSymbol(state.activeMarketData.symbol, symbol)
+                || String(state.activeMarketData.timeframe || '').toUpperCase() !== chartTimeframe) {
+                await loadPaTrainingChartForSymbol(symbol, chartTimeframe, { silent: true });
+            }
+            if (state.activeMarketData && sameSymbol(state.activeMarketData.symbol, symbol)
+                && String(state.activeMarketData.timeframe || '').toUpperCase() === chartTimeframe) {
+                restorePaTrainingChartViewport(state.activeMarketData, remembered);
+                persistPaWorkspace({ chartTimeframe, selectedCaseId: state.paTrainingSelectedCaseId });
+            }
+        } finally {
+            state.paTrainingResumeLoading = false;
         }
     }
 
@@ -2111,6 +2121,7 @@
                 symbol,
                 timeframe,
                 selectedCaseId: patch.selectedCaseId ?? state.paTrainingSelectedCaseId ?? '',
+                skippedCaseIds: Array.isArray(patch.skippedCaseIds) ? patch.skippedCaseIds.slice(0, 500) : state.paTrainingSkippedCaseIds.slice(0, 500),
                 replayIndex: keepValidReplay ? previous.replayIndex : requestedReplayIndex,
                 replayEnabled: keepValidReplay ? previous.replayEnabled !== false : (hasReplayEnabled ? patch.replayEnabled : (previous.replayEnabled ?? state.chartView.replay.enabled)),
                 chartTimeframe: patch.chartTimeframe || (chartMatches ? chartData.timeframe : previous.chartTimeframe) || timeframe,
@@ -2143,6 +2154,7 @@
         state.paTrainingTimeframe = String(last.timeframe || state.paTrainingTimeframe || 'H4').toUpperCase();
         state.paTrainingChartTimeframe = String(last.chartTimeframe || state.paTrainingTimeframe || 'H4').toUpperCase();
         state.paTrainingSelectedCaseId = String(last.selectedCaseId || '');
+        state.paTrainingSkippedCaseIds = Array.isArray(last.skippedCaseIds) ? last.skippedCaseIds.slice(0, 500) : [];
         return last;
     }
 
@@ -2953,6 +2965,8 @@
         state.paTrainingZones = [];
         state.paTrainingTradeCases = [];
         state.paTrainingSelectedCaseId = '';
+        state.paTrainingSkippedCaseIds = [];
+        state.paTrainingQueueLoaded = false;
         state.paTrainingSelectedZoneId = '';
         state.paTrainingChartData = null;
         state.paTrainingChartError = '';
@@ -3032,7 +3046,15 @@
                   ? `<span class="status-error"><strong>${escapeHtml(state.paTrainingError || state.paTrainingCaseError)}</strong></span>`
                   : hasCaseQueue
                     ? `${escapeHtml(state.paTrainingSymbol)} H4: ${number(cases.length)}/${number(state.paTrainingTradeCases.length)} ca theo bộ lọc. Bấm Tiếp hoặc chọn một ca để dạy AI.`
+                    : state.paTrainingQueueLoaded
+                      ? 'Không còn ca chưa dạy phù hợp trong dữ liệu hiện có. Tải thêm dữ liệu hoặc đổi bộ lọc để tiếp tục.'
                     : 'Chọn cặp tiền rồi bấm Tạo ca để tìm lệnh M15 đã vào và có kết quả SL/TP.';
+        }
+
+        if (state.paTrainingQueueLoaded && !hasCaseQueue) {
+            list.innerHTML = '<div class="notice">Không còn ca chưa dạy phù hợp trong dữ liệu hiện có.</div>';
+            if (detail) detail.innerHTML = '';
+            return;
         }
 
         if (hasCaseQueue) {
@@ -3447,9 +3469,16 @@
             }
             delete state.paTrainingSessionDrafts[key];
             if (input && finalNote) input.value = '';
-            showToast('Đã lưu ca. Bấm biểu tượng Ca đã lưu cạnh AI Coach để xem, sửa hoặc xóa.');
-            if (options.advance !== false) movePaTrainingTrade(1);
+            if (options.advance !== false) await loadPaTrainingTradeCases({ silent: true, advanceAfterSave: true });
             else renderPaTraining();
+            const next = options.advance === false ? null : paTrainingSelectedTeachingCase();
+            showToast(options.advance === false
+                ? 'Đã lưu ca.'
+                : next
+                  ? draft.decision === 'session_note'
+                    ? 'Đã lưu phiên. Muốn AI học cách chọn ca, hãy đánh dấu Đúng/Bỏ/Sửa rồi lưu ca.'
+                    : `Đã lưu ca. Ca tiếp theo được xếp từ ${number(next.learning?.taughtCount || 0)} ca đã dạy.`
+                  : 'Đã lưu ca. Không còn ca chưa dạy tiếp theo trong dữ liệu hiện có.');
         } catch (error) {
             showToast(error.message);
         } finally {
@@ -3469,6 +3498,8 @@
             anchorIndex: trade.anchorIndex,
             signalIndex: trade.signalIndex,
             signalTime: trade.signalTime || '',
+            zoneTouchCount: trade.zoneTouchCount,
+            signalBodyFraction: trade.signalBodyFraction,
             entryIndex: trade.entryIndex,
             entryCandleNumber: trade.entryCandleNumber,
             entryTime: trade.entryTime || '',
@@ -3552,7 +3583,7 @@
                 <span class="pa-case-number">Ca ${number(index + 1)}</span>
                 <span class="pa-case-direction is-${escapeAttr(sideClass)}">${escapeHtml(sideLabel)}</span>
                 <strong>${escapeHtml(item.symbol || '')} · H4 → M15 · ${escapeHtml(formatChartTime(item.entryTime || item.anchorTime))}</strong>
-                <span class="pa-case-row-meta">${escapeHtml(outcome)} · RR 1:${escapeHtml(formatFixed(item.rr ?? 1, 2))} · ${escapeHtml(statusText)}</span>
+                <span class="pa-case-row-meta" title="${escapeAttr(item.learning?.reason || '')}">${escapeHtml(outcome)} · RR 1:${escapeHtml(formatFixed(item.rr ?? 1, 2))} · ${escapeHtml(statusText)}</span>
             </button>
         `;
     }
@@ -3687,6 +3718,7 @@
                         <small>${escapeHtml(resultText)} | ${escapeHtml(zoneText)}</small>
                         ${hasOutcome ? `<small>Thoát ${escapeHtml(formatPrice(trade.exitPrice, trade.symbol))} · ${escapeHtml(formatChartTime(trade.exitTime || ''))}</small>` : ''}
                         <div class="pa-ai-case-reasons">
+                            ${trade.learning?.reason ? `<div><b>AI chọn vì</b><span>${escapeHtml(trade.learning.reason)}</span></div>` : ''}
                             <div><b>Vùng / lý do</b><span>${escapeHtml(zoneText)} · ${escapeHtml(zoneReason)}</span></div>
                             <div><b>Lý do vào</b><span>${escapeHtml(entryReason)}</span></div>
                             <div><b>SL / TP</b><span>${escapeHtml(riskReason)}</span></div>
@@ -4639,9 +4671,22 @@
         const cases = paTrainingFilteredCases();
         if (cases.length) {
             const currentIndex = Math.max(0, cases.findIndex((item) => item.id === state.paTrainingSelectedCaseId));
+            if (step > 0) {
+                const currentId = cases[currentIndex]?.id;
+                if (currentId && !state.paTrainingSkippedCaseIds.includes(currentId)) state.paTrainingSkippedCaseIds.push(currentId);
+                persistPaWorkspace({ skippedCaseIds: state.paTrainingSkippedCaseIds });
+                if (currentIndex >= cases.length - 1) {
+                    loadPaTrainingTradeCases({ silent: true, keepSkipped: true, advanceAfterSave: true }).catch((error) => showToast(error.message));
+                    return;
+                }
+            }
             const nextIndex = (currentIndex + step + cases.length) % cases.length;
             selectPaTrainingCaseById(cases[nextIndex].id, { focus: true });
             showToast(`Đã chuyển sang ca ${nextIndex + 1}/${cases.length}`);
+            return;
+        }
+        if (state.paTrainingQueueLoaded) {
+            showToast('Không còn ca tiếp theo trong dữ liệu hiện có.');
             return;
         }
         if (!state.activeMarketData) {
@@ -4663,13 +4708,7 @@
 
     function skipPaTrainingCurrentCase() {
         const cases = paTrainingFilteredCases();
-        if (cases.length === 1 && cases[0].id === state.paTrainingSelectedCaseId) {
-            state.paTrainingSelectedCaseId = '';
-            renderPaTraining();
-            showToast('Đã bỏ qua ca hiện tại. Ca vẫn còn trong danh sách để mở lại.');
-            return;
-        }
-        movePaTrainingTrade(1);
+        if (cases.length) movePaTrainingTrade(1);
     }
 
     function activatePaTrainingLevelDrag() {
@@ -4747,6 +4786,7 @@
         }
         state.paTrainingSymbol = symbol;
         state.paTrainingTimeframe = $('#paTrainingTimeframeSelect')?.value || 'H4';
+        if (!options.keepSkipped && !options.advanceAfterSave && !options.restoreProgress) state.paTrainingSkippedCaseIds = [];
         const rememberedProgress = savedPaWorkspace(state.paTrainingSymbol, state.paTrainingTimeframe);
         state.paTrainingLoading = true;
         state.paTrainingCaseLoading = true;
@@ -4759,15 +4799,21 @@
                 timeframe: state.paTrainingTimeframe,
                 filter: state.paTrainingZoneFilter || 'active',
                 limit: clamp(Number($('#paTrainingCaseCount')?.value || 1), 1, 100),
+                excluded_case_ids: state.paTrainingSkippedCaseIds,
+                preferred_case_id: options.restoreProgress ? rememberedProgress.selectedCaseId || '' : options.keepSelectionCaseId || '',
             });
             state.paTrainingZones = data.zone_candidates || [];
             state.paTrainingTradeCases = data.trade_cases || [];
+            state.paTrainingQueueLoaded = true;
             const remembered = savedPaWorkspace(state.paTrainingSymbol, state.paTrainingTimeframe);
-            const rememberedCase = state.paTrainingTradeCases.find((item) => item.id === (options.keepSelectionCaseId || state.paTrainingSelectedCaseId || remembered.selectedCaseId));
+            const restoreId = options.keepSelectionCaseId || (options.restoreProgress ? (state.paTrainingSelectedCaseId || remembered.selectedCaseId) : '');
+            const rememberedCase = state.paTrainingTradeCases.find((item) => item.id === restoreId);
             const preferred = options.keepSelectionZoneId
                 ? state.paTrainingTradeCases.find((item) => item.zoneId === options.keepSelectionZoneId)
                 : null;
-            state.paTrainingSelectedCaseId = rememberedCase?.id || preferred?.id || data.selected_case_id || state.paTrainingTradeCases.find((item) => !item.review)?.id || state.paTrainingTradeCases[0]?.id || '';
+            state.paTrainingSelectedCaseId = options.advanceAfterSave
+                ? (data.selected_case_id || '')
+                : (rememberedCase?.id || preferred?.id || data.selected_case_id || state.paTrainingTradeCases[0]?.id || '');
             const selected = paTrainingSelectedTeachingCase();
             state.paTrainingSelectedZoneId = selected?.zoneId || selected?.zone?.id || state.paTrainingZones[0]?.id || '';
             state.paTrainingMemory = normalizePaTrainingMemory(data.pa_training_memory);
@@ -4778,8 +4824,6 @@
                 // workspace after a page/app restart; otherwise a stale cursor can hide the
                 // selected case behind a replay cutoff near the beginning of the chart.
                 if (options.restoreProgress === true && rememberedProgress.selectedCaseId === selected.id) restorePaTrainingReplayProgress(state.activeMarketData, rememberedProgress);
-            } else {
-                await loadPaTrainingChartForSelection(state.paTrainingTimeframe || 'H4', { silent: true });
             }
             persistPaWorkspace({
                 selectedCaseId: state.paTrainingSelectedCaseId,
@@ -4882,7 +4926,7 @@
         if (caseIndex >= 0) {
             state.paTrainingTradeCases[caseIndex] = { ...state.paTrainingTradeCases[caseIndex], review: data.review, caseStatus: 'reviewed' };
         }
-        if (options.advance !== false) movePaTrainingTrade(1);
+        if (options.advance !== false) await loadPaTrainingTradeCases({ silent: true, advanceAfterSave: true });
         else renderPaTraining();
         if (!options.silent) showToast(`Đã lưu ca trade: ${label}`);
     }
@@ -4925,6 +4969,8 @@
         state.paTrainingZones = [];
         state.paTrainingTradeCases = [];
         state.paTrainingSelectedCaseId = '';
+        state.paTrainingSkippedCaseIds = [];
+        state.paTrainingQueueLoaded = false;
         state.paTrainingSelectedZoneId = '';
         state.paTrainingCaseError = '';
         state.paTrainingError = '';
@@ -16076,14 +16122,16 @@
             state.paTrainingZones = [];
             state.paTrainingTradeCases = [];
             state.paTrainingSelectedCaseId = '';
+            state.paTrainingSkippedCaseIds = [];
+            state.paTrainingQueueLoaded = false;
             state.paTrainingSelectedZoneId = '';
             renderPaTraining();
         });
         $('#paTrainingZoneFilter')?.addEventListener('change', (event) => {
             state.paTrainingZoneFilter = event.target.value || 'active';
             state.paTrainingSelectedCaseId = '';
-            renderPaTraining();
-            loadPaTrainingChartForSelection(state.paTrainingChartTimeframe || 'H4', { silent: true }).catch((e) => showToast(e.message));
+            if (state.paTrainingQueueLoaded) loadPaTrainingTradeCases({ silent: true }).catch((e) => showToast(e.message));
+            else renderPaTraining();
         });
         $('#paTrainingChatSendBtn')?.addEventListener('click', () => sendPaTrainingChat().catch((e) => showToast(e.message)));
         $('#paTrainingChatInput')?.addEventListener('keydown', (event) => {
@@ -16435,9 +16483,13 @@
             const timeframe = state.paTrainingChartTimeframe || state.paTrainingTimeframe || 'H4';
             const file = symbol ? findBestMarketFileForSymbol(symbol, timeframe) : null;
             const loaded = state.activeMarketData;
+            const remembered = symbol ? savedPaWorkspace(symbol, state.paTrainingTimeframe) : null;
+            const shouldResume = !!remembered?.selectedCaseId && !state.paTrainingQueueLoaded && !state.paTrainingResumeLoading;
             const alreadyLoaded = file && loaded && sameSymbol(loaded.symbol, file.symbol)
                 && String(loaded.timeframe || '').toUpperCase() === String(file.timeframe || '').toUpperCase();
-            if (file && !alreadyLoaded && !state.paTrainingChartLoading) {
+            if (shouldResume) {
+                resumePaTrainingWorkspace(remembered).catch((error) => showToast(error.message));
+            } else if (file && !alreadyLoaded && !state.paTrainingChartLoading && !state.paTrainingResumeLoading) {
                 loadPaTrainingChartForSymbol(file.symbol, file.timeframe, { silent: true }).catch((error) => showToast(error.message));
             } else if (alreadyLoaded) {
                 restorePaTrainingChartViewport(loaded, savedPaWorkspace(symbol, state.paTrainingTimeframe));

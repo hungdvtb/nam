@@ -32,11 +32,13 @@ try {
     checkCaseApi($history[0]['id']==='old' && $history[1]['id']==='new', 'chat history sorted oldest to newest for latest scroll');
     paTrainingWorkspaceState($store, ['state'=>['TEST_H4'=>[
         'symbol'=>'TEST','timeframe'=>'H4','selectedCaseId'=>'case_x','replayIndex'=>321,
+        'skippedCaseIds'=>['case_one','case_two'],
         'chartTimeframe'=>'D1','barsOnScreen'=>240,'rightOffset'=>18,'viewportRightTime'=>1700000000,
         'priceScale'=>1.8,'priceOffset'=>0.0007,
     ]]]);
     $workspace = paTrainingWorkspaceState($store, [] )['workspace'];
     checkCaseApi($workspace['TEST_H4']['replayIndex']===321 && $workspace['TEST_H4']['selectedCaseId']==='case_x', 'workspace position survives reload');
+    checkCaseApi($workspace['TEST_H4']['skippedCaseIds']===['case_one','case_two'], 'skipped teaching cases survive reload');
     checkCaseApi($workspace['TEST_H4']['chartTimeframe']==='D1' && $workspace['TEST_H4']['barsOnScreen']===240, 'chart timeframe and zoom survive reload');
     checkCaseApi($workspace['TEST_H4']['rightOffset']===18 && (float)$workspace['TEST_H4']['viewportRightTime']===1700000000.0, 'chart horizontal position survives reload');
     checkCaseApi($workspace['TEST_H4']['priceScale']===1.8 && $workspace['TEST_H4']['priceOffset']===0.0007, 'chart price scale survives reload');

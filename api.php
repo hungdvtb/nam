@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/JsonStore.php';
 require_once __DIR__ . '/lib/Mt5Bridge.php';
 require_once __DIR__ . '/lib/PaReviewService.php';
+require_once __DIR__ . '/lib/PaAdaptiveCaseSelector.php';
 require_once __DIR__ . '/lib/AI/Gateway/ProviderFactory.php';
 require_once __DIR__ . '/lib/AI/Gateway/OpenAIProviderStatus.php';
 require_once __DIR__ . '/lib/AI/Gateway/OllamaProviderStatus.php';
@@ -849,17 +850,34 @@ function paTrainingTradeCases(JsonStore $store, array $payload): array
         $case = paTrainingBuildTeachingCase($zone, $bars, $i, $m15Bars, $minimumRr, $preferredRr);
         if ($case) $cases[] = $case;
     }
-    usort($cases, static fn(array $a, array $b): int => ((int)($a['entryIndex'] ?? 0)) <=> ((int)($b['entryIndex'] ?? 0)));
-    // Keep the most recent completed trades when the historical scan exceeds
-    // the queue limit, so refreshed data actually reaches the training queue.
-    if (count($cases) > $limit) $cases = array_slice($cases, -$limit);
+    $filter = (string)($payload['filter'] ?? 'active');
+    $cases = array_values(array_filter($cases, static function (array $case) use ($filter): bool {
+        $zone = is_array($case['zone'] ?? null) ? $case['zone'] : [];
+        $status = (string)($zone['status'] ?? 'active');
+        return match ($filter) {
+            'all' => true,
+            'active' => !in_array($status, ['broken', 'weak'], true),
+            'fresh', 'touched', 'weak', 'broken' => $status === $filter,
+            'manual' => !empty($zone['manual']) || ($zone['source'] ?? '') === 'manual',
+            default => true,
+        };
+    }));
+    $memory = paTrainingMemory($store);
+    $selection = PaAdaptiveCaseSelector::select(
+        $cases,
+        $memory,
+        $limit,
+        is_array($payload['excluded_case_ids'] ?? null) ? array_slice($payload['excluded_case_ids'], 0, 500) : [],
+        (string)($payload['preferred_case_id'] ?? '')
+    );
+    $cases = $selection['cases'];
     return [
         'ok' => true,
         'zone_candidates' => $zones,
         'trade_cases' => $cases,
         'selected_case_id' => $cases[0]['id'] ?? '',
-        'case_summary' => ['h4_bars' => count($bars), 'm15_bars' => count($m15Bars), 'cases' => count($cases)],
-        'pa_training_memory' => paTrainingMemory($store),
+        'case_summary' => ['h4_bars' => count($bars), 'm15_bars' => count($m15Bars), 'cases' => count($cases), 'available' => $selection['available_count'], 'reviewed' => $selection['reviewed_count']],
+        'pa_training_memory' => $memory,
     ];
 }
 
@@ -992,6 +1010,16 @@ function paTrainingBuildTeachingCase(array $zone, array $bars, int $index, array
     $entryBar = paTrainingM15BarAt($m15Bars, $entryIndex);
     $signalBar = paTrainingM15BarAt($m15Bars, $signal['signalIndex']);
     $exitBar = paTrainingM15BarAt($m15Bars, $exitIndex);
+    $touchCount = 0;
+    $wasTouching = false;
+    for ($j = paTrainingM15IndexAtOrAfter($m15Bars, $touchTime); $j <= $signal['signalIndex']; $j++) {
+        $candidateBar = paTrainingM15BarAt($m15Bars, $j);
+        $touching = (float)($candidateBar['low'] ?? INF) <= $high && (float)($candidateBar['high'] ?? -INF) >= $low;
+        if ($touching && !$wasTouching) $touchCount++;
+        $wasTouching = $touching;
+    }
+    $signalRange = max(0.00000001, (float)($signalBar['high'] ?? 0) - (float)($signalBar['low'] ?? 0));
+    $signalBodyFraction = min(1.0, abs((float)($signalBar['close'] ?? 0) - (float)($signalBar['open'] ?? 0)) / $signalRange);
     return [
         'id' => 'case_' . (string)($zone['id'] ?? $index) . '_' . paTrainingBarTimestamp($entryBar),
         'isTeachingCase' => true,
@@ -1005,6 +1033,8 @@ function paTrainingBuildTeachingCase(array $zone, array $bars, int $index, array
         'anchorIndex' => $anchorIndex,
         'signalIndex' => $signal['signalIndex'],
         'signalTime' => (string)($signalBar['time'] ?? ''),
+        'zoneTouchCount' => $touchCount,
+        'signalBodyFraction' => round($signalBodyFraction, 4),
         'entryIndex' => $entryIndex,
         'entryCandleNumber' => $entryIndex + 1,
         'entryTime' => (string)($entryBar['time'] ?? ''),
@@ -1200,10 +1230,13 @@ function paTrainingWorkspaceState(JsonStore $store, array $payload): array
         $chartTimeframe = strtoupper((string)($item['chartTimeframe'] ?? $timeframe));
         $allowedTimeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1'];
         if (!in_array($chartTimeframe, $allowedTimeframes, true)) $chartTimeframe = $timeframe;
+        $skipped = is_array($item['skippedCaseIds'] ?? null) ? array_slice($item['skippedCaseIds'], 0, 500) : [];
+        $skipped = array_values(array_filter(array_map('strval', $skipped), static fn(string $id): bool => preg_match('/^case_[A-Za-z0-9_-]{1,155}$/', $id) === 1));
         $workspace = [
             'symbol' => $symbol,
             'timeframe' => $timeframe,
             'selectedCaseId' => paTrainingLimitText((string)($item['selectedCaseId'] ?? ''), 160),
+            'skippedCaseIds' => $skipped,
             'replayIndex' => is_numeric($replayIndex) ? max(0, (int)$replayIndex) : null,
             'replayEnabled' => ($item['replayEnabled'] ?? true) !== false,
             'chartTimeframe' => $chartTimeframe,
