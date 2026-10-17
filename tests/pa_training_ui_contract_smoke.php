@@ -136,7 +136,10 @@ $assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember th
 $assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
 $assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
 $assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
-$assertContains($index, 'assets/app.js?v=20261017-pa-ai-alias-e6f8ab5', 'AI chart command fix must use a fresh frontend cache version');
+$assertContains($index, 'assets/app.js?v=20261017-pa-memory-draw-fix', 'PA fixes must use a fresh frontend cache version');
+$assertContains($app, "magnetMode: 'off'", 'chart drawing must not snap to candle prices by default');
+$assertContains($app, "settings.magnetMode === 'strong' && settings.magnetModeExplicit !== true", 'legacy strong magnet settings must migrate to off unless explicitly selected');
+$assertContains($app, '(event.clientX - rect.left) * (rect.width ? width / rect.width : 1)', 'drawing pointer coordinates must scale to the chart layout dimensions');
 $assertContains($app, 'paTrainingChartRequestId: 0', 'PA chart loading must track the latest symbol/timeframe request');
 $assertContains($app, 'if (!isCurrentRequest()) return false;', 'stale PA chart requests must not replace a newer chart');
 $assertContains($app, 'if (opened) {', 'PA chart actions must only report success after data has loaded');

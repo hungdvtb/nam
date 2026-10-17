@@ -48,6 +48,12 @@ try {
             ['time'=>1700000900,'time_iso'=>'2023-11-14T22:28:20+00:00','open'=>1.15,'high'=>1.25,'low'=>1.05,'close'=>1.2,'tick_volume'=>456,'spread'=>3],
         ],
     ], JSON_UNESCAPED_SLASHES));
+    $iteratedBars = iterator_to_array(iterateMarketDataBars($marketFixture), false);
+    checkCaseApi(count($iteratedBars) === 2 && (float)$iteratedBars[1]['close'] === 1.2, 'market data bars can be decoded incrementally');
+    $compactBars = paTrainingReadCompactM15Bars($marketFixture);
+    $secondCompactBar = paTrainingM15BarAt($compactBars, 1);
+    checkCaseApi(count($compactBars) === 2 && paTrainingM15BarTimestamp($compactBars[1]) === 1700000900, 'compact M15 bars preserve timestamps');
+    checkCaseApi((float)$secondCompactBar['open'] === 1.15 && (float)$secondCompactBar['high'] === 1.25 && (float)$secondCompactBar['low'] === 1.05 && (float)$secondCompactBar['close'] === 1.2, 'compact M15 bars preserve OHLC values');
     $marketHandle = fopen($marketFixture, 'rb');
     ob_start();
     streamNormalizedMarketDataJson($marketHandle, false);

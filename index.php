@@ -1416,7 +1416,7 @@
                             <select id="chartMagnetMode" aria-label="Chế độ nam châm">
                                 <option value="off">Tắt nam châm</option>
                                 <option value="weak">Nam châm yếu</option>
-                                <option value="strong" selected>Nam châm mạnh</option>
+                                <option value="strong">Nam châm mạnh</option>
                             </select>
                             <label><input type="checkbox" id="chartStayDrawingToggle"> Vẽ liên tục</label>
                             <label><input type="checkbox" id="chartLockToggle"> Khóa hình vẽ</label>
@@ -1997,7 +1997,7 @@
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
     <script src="assets/pa-workspace.js?v=20261016-trade-level-markers"></script>
-    <script src="assets/app.js?v=20261017-pa-ai-alias-e6f8ab5"></script>
+    <script src="assets/app.js?v=20261017-pa-memory-draw-fix"></script>
 </body>
 </html>
 

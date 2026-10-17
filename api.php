@@ -298,6 +298,98 @@ function marketDataFilePath(array $payload): string
     return __DIR__ . '/data/market_data/' . $file;
 }
 
+function iterateMarketDataBars(string $path): Generator
+{
+    $handle = @fopen($path, 'rb');
+    if ($handle === false) throw new RuntimeException('Không thể mở file dữ liệu chart.');
+    try {
+        $buffer = '';
+        while (!preg_match('/"bars"\s*:\s*\[/', $buffer, $matches, PREG_OFFSET_CAPTURE)) {
+            if (strlen($buffer) > 1048576) throw new RuntimeException('Header dữ liệu chart vượt quá giới hạn.');
+            $chunk = fread($handle, 8192);
+            if ($chunk === false || $chunk === '') throw new RuntimeException('File dữ liệu chart thiếu mảng bars.');
+            $buffer .= $chunk;
+        }
+        $marker = $matches[0][0];
+        $offset = $matches[0][1] + strlen($marker);
+        $buffer = substr($buffer, $offset);
+        $offset = 0;
+        $depth = 0;
+        $inString = false;
+        $escaped = false;
+        $value = '';
+        while (true) {
+            if ($offset >= strlen($buffer)) {
+                $buffer = fread($handle, 65536);
+                $offset = 0;
+                if ($buffer === false || $buffer === '') throw new RuntimeException('File dữ liệu chart bị ngắt giữa mảng bars.');
+            }
+            $char = $buffer[$offset++];
+            if ($value === '') {
+                if ($char === ']') return;
+                if ($char === ',' || ctype_space($char)) continue;
+                if ($char !== '{') throw new RuntimeException('Nến chart không đúng định dạng JSON object.');
+                $value = '{';
+                $depth = 1;
+                $inString = false;
+                $escaped = false;
+                continue;
+            }
+
+            $value .= $char;
+            if ($inString) {
+                if ($escaped) $escaped = false;
+                elseif ($char === '\\') $escaped = true;
+                elseif ($char === '"') $inString = false;
+                continue;
+            }
+            if ($char === '"') $inString = true;
+            elseif ($char === '{' || $char === '[') $depth++;
+            elseif ($char === '}' || $char === ']') {
+                $depth--;
+                if ($depth === 0) {
+                    $bar = json_decode($value, true);
+                    if (is_array($bar)) yield $bar;
+                    $value = '';
+                }
+            }
+        }
+    } finally {
+        fclose($handle);
+    }
+}
+
+function paTrainingReadCompactM15Bars(string $path): array
+{
+    $bars = [];
+    foreach (iterateMarketDataBars($path) as $bar) {
+        $timestamp = paTrainingBarTimestamp($bar);
+        if ($timestamp <= 0) continue;
+        $bars[] = pack('qdddd', $timestamp, (float)($bar['open'] ?? 0), (float)($bar['high'] ?? 0), (float)($bar['low'] ?? 0), (float)($bar['close'] ?? 0));
+    }
+    return $bars;
+}
+
+function paTrainingM15BarAt(array $bars, int $index): array
+{
+    $bar = $bars[$index] ?? [];
+    if (!is_string($bar) || strlen($bar) !== 40) return is_array($bar) ? $bar : [];
+    $values = unpack('qtimestamp/dopen/dhigh/dlow/dclose', $bar);
+    if (!is_array($values)) return [];
+    $values['time'] = gmdate('c', (int)$values['timestamp']);
+    $values['time_iso'] = $values['time'];
+    return $values;
+}
+
+function paTrainingM15BarTimestamp(array|string $bar): int
+{
+    if (is_string($bar) && strlen($bar) === 40) {
+        $timestamp = unpack('qtimestamp', substr($bar, 0, 8));
+        return is_array($timestamp) ? (int)$timestamp['timestamp'] : 0;
+    }
+    return is_array($bar) ? paTrainingBarTimestamp($bar) : 0;
+}
+
 function streamMarketDataResponse(array $payload): void
 {
     $path = marketDataFilePath($payload);
@@ -538,13 +630,19 @@ function paTrainingBarTimestamp(array $bar): int
 
 function paTrainingM15Window(JsonStore $store, string $symbol): ?array
 {
+    static $windowCache = [];
+    if (array_key_exists($symbol, $windowCache)) return $windowCache[$symbol];
     $path = __DIR__ . '/data/market_data/' . $symbol . '_M15.json';
-    if (!is_file($path)) return null;
-    $data = json_decode(file_get_contents($path) ?: '', true);
-    $rawBars = is_array($data) && is_array($data['bars'] ?? null) ? $data['bars'] : [];
-    $times = array_values(array_filter(array_map(static fn($bar): int => is_array($bar) ? paTrainingBarTimestamp($bar) : 0, $rawBars), static fn(int $time): bool => $time > 0));
-    if (!$times) return null;
-    return ['start' => min($times), 'end' => max($times)];
+    if (!is_file($path)) return $windowCache[$symbol] = null;
+    $start = PHP_INT_MAX;
+    $end = 0;
+    foreach (iterateMarketDataBars($path) as $bar) {
+        $time = paTrainingBarTimestamp($bar);
+        if ($time <= 0) continue;
+        $start = min($start, $time);
+        $end = max($end, $time);
+    }
+    return $windowCache[$symbol] = $end > 0 ? ['start' => $start, 'end' => $end] : null;
 }
 
 function paTrainingAlignBarsToM15(JsonStore $store, string $symbol, string $timeframe, array $bars): array
@@ -744,8 +842,7 @@ function paTrainingTradeCases(JsonStore $store, array $payload): array
     }
     $m15Path = __DIR__ . '/data/market_data/' . $symbol . '_M15.json';
     if (is_file($m15Path)) {
-        $m15Data = normalizeMarketData(json_decode(file_get_contents($m15Path) ?: '', true) ?: []);
-        $m15Bars = is_array($m15Data['bars'] ?? null) ? $m15Data['bars'] : [];
+        $m15Bars = paTrainingReadCompactM15Bars($m15Path);
     }
     $cases = [];
     foreach ($zones as $i => $zone) {
@@ -772,7 +869,7 @@ function paTrainingM15IndexAtOrAfter(array $bars, int $time): int
     $high = count($bars);
     while ($low < $high) {
         $middle = intdiv($low + $high, 2);
-        if (paTrainingBarTimestamp($bars[$middle]) < $time) $low = $middle + 1;
+        if (paTrainingM15BarTimestamp($bars[$middle]) < $time) $low = $middle + 1;
         else $high = $middle;
     }
     return $low;
@@ -790,8 +887,8 @@ function paTrainingTriggeredEntry(array $zone, array $m15Bars, int $touchTime, s
     $start = paTrainingM15IndexAtOrAfter($m15Bars, $touchTime);
     // The retest must turn into an M15 signal within two H4 candles.
     $lastSignalTime = $touchTime + 8 * 3600;
-    for ($i = $start; $i < $count - 1 && paTrainingBarTimestamp($m15Bars[$i]) < $lastSignalTime; $i++) {
-        $bar = $m15Bars[$i];
+    for ($i = $start; $i < $count - 1 && paTrainingM15BarTimestamp($m15Bars[$i]) < $lastSignalTime; $i++) {
+        $bar = paTrainingM15BarAt($m15Bars, $i);
         $open = (float)($bar['open'] ?? NAN);
         $close = (float)($bar['close'] ?? NAN);
         $high = (float)($bar['high'] ?? NAN);
@@ -802,7 +899,7 @@ function paTrainingTriggeredEntry(array $zone, array $m15Bars, int $touchTime, s
             ? $close < $open && $close <= $zoneMid
             : $close > $open && $close >= $zoneMid;
         if (!$touchesZone || !$confirms) continue;
-        $entryBar = $m15Bars[$i + 1];
+        $entryBar = paTrainingM15BarAt($m15Bars, $i + 1);
         $entryPrice = (float)($entryBar['open'] ?? NAN);
         if (!is_finite($entryPrice) || $entryPrice <= 0) continue;
         // Skip a gap that has already moved away from the setup before entry.
@@ -832,9 +929,10 @@ function paTrainingResolvedExit(array $bars, int $entryIndex, string $direction,
     $tp1Taken = false;
     $last = min(count($bars) - 1, $entryIndex + 512);
     for ($i = $entryIndex; $i <= $last; $i++) {
-        $open = (float)($bars[$i]['open'] ?? NAN);
-        $high = (float)($bars[$i]['high'] ?? NAN);
-        $low = (float)($bars[$i]['low'] ?? NAN);
+        $bar = paTrainingM15BarAt($bars, $i);
+        $open = (float)($bar['open'] ?? NAN);
+        $high = (float)($bar['high'] ?? NAN);
+        $low = (float)($bar['low'] ?? NAN);
         if (!is_finite($open) || !is_finite($high) || !is_finite($low)) continue;
         if ($direction === 'short') {
             if ($open >= $sl) return ['index' => $i, 'price' => $open, 'type' => $tp1Taken ? 'TP1_SL' : 'SL', 'gap' => true];
@@ -891,9 +989,9 @@ function paTrainingBuildTeachingCase(array $zone, array $bars, int $index, array
     $zoneLabel = $direction === 'short' ? 'Vùng canh sell' : 'Vùng canh buy';
     $sideLabel = $direction === 'short' ? 'Bán' : 'Mua';
     $rangeText = number_format($low, 5, '.', '') . ' - ' . number_format($high, 5, '.', '');
-    $entryBar = $m15Bars[$entryIndex];
-    $signalBar = $m15Bars[$signal['signalIndex']];
-    $exitBar = $m15Bars[$exitIndex];
+    $entryBar = paTrainingM15BarAt($m15Bars, $entryIndex);
+    $signalBar = paTrainingM15BarAt($m15Bars, $signal['signalIndex']);
+    $exitBar = paTrainingM15BarAt($m15Bars, $exitIndex);
     return [
         'id' => 'case_' . (string)($zone['id'] ?? $index) . '_' . paTrainingBarTimestamp($entryBar),
         'isTeachingCase' => true,

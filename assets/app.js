@@ -452,8 +452,9 @@
             teachingLevelMarkersVisible: true,
             drawingsLocked: false,
             stayInDrawingMode: false,
-            magnetMode: 'strong',
-            snapToOhlc: true,
+            magnetMode: 'off',
+            magnetModeExplicit: false,
+            snapToOhlc: false,
             favoriteTools: loadChartFavorites(),
             favoritesVisible: false,
             copiedDrawing: null,
@@ -2261,6 +2262,7 @@
                 scaleMode: state.chartView.scaleMode,
                 timezone: state.chartView.timezone,
                 magnetMode: state.chartView.magnetMode,
+                magnetModeExplicit: state.chartView.magnetModeExplicit,
                 stayInDrawingMode: state.chartView.stayInDrawingMode,
                 favoritesVisible: state.chartView.favoritesVisible,
                 layoutSlots: state.chartView.layoutSlots,
@@ -2297,7 +2299,11 @@
         if (!settings || typeof settings !== 'object') return;
         if (settings.scaleMode) state.chartView.scaleMode = settings.scaleMode;
         if (settings.timezone) state.chartView.timezone = settings.timezone;
-        if (settings.magnetMode) state.chartView.magnetMode = settings.magnetMode;
+        if (['off', 'weak', 'strong'].includes(settings.magnetMode)) {
+            state.chartView.magnetMode = settings.magnetMode === 'strong' && settings.magnetModeExplicit !== true
+                ? 'off'
+                : settings.magnetMode;
+        }
         if (typeof settings.stayInDrawingMode === 'boolean') state.chartView.stayInDrawingMode = settings.stayInDrawingMode;
         if (Number.isFinite(Number(settings.layoutSlots))) state.chartView.layoutSlots = clamp(Number(settings.layoutSlots), 1, 4);
         if (settings.indicatorTemplate) state.chartView.indicatorTemplate = settings.indicatorTemplate;
@@ -11928,6 +11934,7 @@
         });
         $('#chartMagnetMode')?.addEventListener('change', (event) => {
             state.chartView.magnetMode = event.target.value || 'off';
+            state.chartView.magnetModeExplicit = true;
             state.chartView.snapToOhlc = state.chartView.magnetMode !== 'off';
             persistChartSettings();
             updateChartBottomStatus();
@@ -13177,9 +13184,12 @@
 
     function canvasPoint(event, canvas) {
         const rect = canvas.getBoundingClientRect();
+        const layout = state.chartView.lastLayout;
+        const width = Number(layout?.width) || rect.width;
+        const height = Number(layout?.height) || rect.height;
         return {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top,
+            x: (event.clientX - rect.left) * (rect.width ? width / rect.width : 1),
+            y: (event.clientY - rect.top) * (rect.height ? height / rect.height : 1),
         };
     }
 
