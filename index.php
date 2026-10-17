@@ -1997,7 +1997,7 @@
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
     <script src="assets/pa-workspace.js?v=20261016-trade-level-markers"></script>
-    <script src="assets/app.js?v=20261017-pa-workspace-resume"></script>
+    <script src="assets/app.js?v=20261017-pa-ai-alias-e6f8ab5"></script>
 </body>
 </html>
 
