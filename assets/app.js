@@ -4138,9 +4138,9 @@
             selectedCase: trade ? paTrainingCaseLabel(trade) : '',
         };
     }
-    function paTrainingChartQuestionAttachment() {
+    function paTrainingChartQuestionAttachment(includeChart = false) {
         const canvas = document.querySelector('#marketChart');
-        const all = getChartDrawings(state.activeMarketData).filter((drawing) => !drawing.hidden);
+        const all = (state.activeMarketData ? getChartDrawings(state.activeMarketData) : []).filter((drawing) => !drawing.hidden);
         const selected = selectedDrawingObjects().filter((drawing) => !drawing.hidden);
         const drawings = (selected.length ? selected : all.slice(-1)).slice(0, 12).map((drawing) => {
             const details = {};
@@ -4150,7 +4150,7 @@
             return { id: getDrawingId(drawing), ...details };
         });
         let image = '';
-        if (canvas && drawings.length) {
+        if (canvas && (drawings.length || includeChart)) {
             try {
                 const maxSide = 1280;
                 const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
@@ -4162,12 +4162,32 @@
                 if (image.length > 3_500_000) image = '';
             } catch (_) { image = ''; }
         }
-        if (!drawings.length && !image) return null;
+        if (!drawings.length && !image && !includeChart) return null;
+        const layout = state.chartView.lastLayout;
+        const bars = state.activeMarketData?.bars || [];
+        const first = Math.max(0, Math.floor(Number(layout?.first) || 0));
+        const lastExclusive = Math.min(bars.length, Math.max(first, Math.ceil(Number(layout?.lastExclusive) || bars.length)));
+        const visible = bars.slice(first, lastExclusive);
+        const stride = Math.max(1, Math.ceil(visible.length / 120));
+        const visibleBars = visible.map((bar, index) => ({ bar, barIndex: first + index })).filter((item, index) => index % stride === 0 || index === visible.length - 1).map(({ bar, barIndex }) => ({
+            barIndex,
+            time: bar.time_iso || bar.time || '',
+            open: Number(bar.open),
+            high: Number(bar.high),
+            low: Number(bar.low),
+            close: Number(bar.close),
+        }));
         return {
             source: 'chart_annotation',
             symbol: state.activeMarketData?.symbol || state.paTrainingSymbol || '',
             timeframe: state.activeMarketData?.timeframe || state.paTrainingChartTimeframe || 'H4',
             drawings,
+            barCount: bars.length,
+            visibleFirst: first,
+            visibleLastExclusive: lastExclusive,
+            priceLow: Number(layout?.lo),
+            priceHigh: Number(layout?.hi),
+            visibleBars,
             imageDataUrl: image,
         };
     }
@@ -4330,7 +4350,7 @@
         const historyBeforeSend = state.paTrainingChatMessages.slice(-12);
         state.paTrainingChatLoading = true;
         const tradeSnapshot = paTrainingTradeSnapshot(trade);
-        const chartAttachment = paTrainingChartQuestionAttachment();
+        const chartAttachment = paTrainingChartQuestionAttachment(isPaTrainingDrawingRequest(message));
         const chatContext = paTrainingChatContext(zone, trade, tradeSnapshot);
         const scopeKey = paTrainingChatScopeKey(chatContext);
         state.paTrainingChatLoadedKey = scopeKey;
@@ -4394,6 +4414,11 @@
             .replace(/[\u0300-\u036f]/g, '')
             .replace(/[đĐ]/g, 'd')
             .toLowerCase();
+    }
+
+    function isPaTrainingDrawingRequest(message) {
+        const text = foldPaTrainingCommandText(message);
+        return /\bve\b/.test(text) || ['draw ', 'danh dau', 'khoanh', 'ke len chart', 'to vung'].some((term) => text.includes(term));
     }
 
     function extractPaTrainingSymbolFromChatText(text) {
@@ -4492,8 +4517,99 @@
                 movePaTrainingZone(-1);
             } else if (action.type === 'set_indicator') {
                 applyPaTrainingIndicatorAction(action);
+            } else if (action.type === 'draw_chart_annotation') {
+                applyPaTrainingChartDrawingAction(action);
             }
         }
+    }
+
+    function applyPaTrainingChartDrawingAction(action) {
+        const data = state.activeMarketData;
+        const layout = state.chartView.lastLayout;
+        const source = action.drawing && typeof action.drawing === 'object' ? action.drawing : null;
+        if (!data || !layout || !source) {
+            showToast('Chưa có biểu đồ sẵn sàng để vẽ');
+            return false;
+        }
+        if ((action.symbol && !sameSymbol(action.symbol, data.symbol)) || (action.timeframe && String(action.timeframe).toUpperCase() !== String(data.timeframe).toUpperCase())) {
+            showToast('Biểu đồ đã đổi cặp hoặc khung thời gian; hãy gửi lại yêu cầu vẽ');
+            return false;
+        }
+        const type = String(source.type || '');
+        const supported = new Set([...BOX_TOOLS, ...LINE_LIKE_TOOLS, ...CHANNEL_TOOLS, ...MULTI_POINT_TOOLS, ...ONE_CLICK_TOOLS, ...TEXT_TOOLS, 'position']);
+        if (!supported.has(type) || state.chartView.drawingsLocked) {
+            showToast(state.chartView.drawingsLocked ? 'Hình vẽ đang bị khóa' : 'Loại hình vẽ này chưa được hỗ trợ');
+            return false;
+        }
+        const bars = layout.allBars || [];
+        if (!bars.length) {
+            showToast('Biểu đồ chưa có nến để neo hình vẽ');
+            return false;
+        }
+        const pointFrom = (item) => {
+            const barIndex = Number(item?.barIndex);
+            const price = Number(item?.price);
+            if (!Number.isFinite(barIndex) || !Number.isFinite(price) || price <= 0 || !bars.length || barIndex < 0 || barIndex >= bars.length) return null;
+            return enrichDomainPointTime({ barIndex: Math.round(barIndex), price }, layout);
+        };
+        let drawing;
+        if (Array.isArray(source.priceRange) && source.priceRange.length >= 2) {
+            const low = Number(source.priceRange[0]);
+            const high = Number(source.priceRange[1]);
+            if (type !== 'rect' || !Number.isFinite(low) || !Number.isFinite(high) || low <= 0 || high <= low) return false;
+            drawing = { ...source, points: [
+                enrichDomainPointTime({ barIndex: clamp(Math.floor(layout.first), 0, Math.max(0, bars.length - 1)), price: high }, layout),
+                enrichDomainPointTime({ barIndex: clamp(Math.ceil(layout.lastExclusive - 1), 0, Math.max(0, bars.length - 1)), price: low }, layout),
+            ] };
+        } else if (type === 'position') {
+            const direction = source.direction === 'short' ? 'short' : 'long';
+            const entry = Number(source.entry), stop = Number(source.stop), target = Number(source.target);
+            if (![entry, stop, target].every((value) => Number.isFinite(value) && value > 0) || (direction === 'long' ? !(stop < entry && target > entry) : !(stop > entry && target < entry))) return false;
+            const startBar = clamp(Math.round(Number(source.startBar ?? Math.floor(layout.lastExclusive - Math.max(8, (Number(layout.visibleCount) || 60) * 0.15)))), 0, Math.max(0, bars.length - 1));
+            const endBar = clamp(Math.max(startBar + 1, Math.round(Number(source.endBar ?? Math.ceil(layout.lastExclusive - 1)))), startBar + 1, Math.max(startBar + 1, bars.length - 1));
+            const start = enrichDomainPointTime({ barIndex: startBar, price: entry }, layout);
+            const end = enrichDomainPointTime({ barIndex: endBar, price: entry }, layout);
+            drawing = { ...source, type: 'position', direction, startBar, endBar, startTime: start?.time, startTimeIso: start?.time_iso, endTime: end?.time, endTimeIso: end?.time_iso };
+        } else if (['hline', 'hray', 'alert'].includes(type)) {
+            const price = Number(source.price);
+            if (!Number.isFinite(price) || price <= 0) return false;
+            drawing = { ...source, type, price };
+            if (type === 'hray') drawing.startBar = clamp(Number(source.barIndex ?? Math.floor(layout.first)), 0, Math.max(0, bars.length - 1));
+        } else if (type === 'vline') {
+            const point = pointFrom({ barIndex: source.barIndex, price: layout.lo });
+            if (!point) return false;
+            drawing = { ...source, type, barIndex: point.barIndex, time: point.time, time_iso: point.time_iso, sourceTimeframe: data.timeframe };
+        } else if (type === 'cross-line') {
+            const point = pointFrom({ barIndex: source.barIndex, price: source.price });
+            if (!point) return false;
+            drawing = { ...source, type, barIndex: point.barIndex, price: point.price, time: point.time, time_iso: point.time_iso, sourceTimeframe: data.timeframe };
+        } else if (TEXT_TOOLS.has(type) || ['price-label', 'dot', 'pin', 'flag', 'icon', 'arrow-marker', 'up-arrow', 'down-arrow'].includes(type)) {
+            const point = pointFrom(source.point);
+            if (!point) return false;
+            drawing = { ...source, type, point };
+            if (type === 'price-label' && !Number.isFinite(Number(drawing.price))) drawing.price = point.price;
+        } else {
+            const sourcePoints = Array.isArray(source.points) ? source.points : [];
+            const points = sourcePoints.map(pointFrom);
+            if (points.some((point) => !point)) return false;
+            if (points.length < 2) return false;
+            drawing = { ...source, type, points };
+        }
+        const safeColor = /^#[0-9a-f]{6}$/i.test(String(drawing.color || '')) ? drawing.color : defaultDrawingColor(type);
+        const pendingZoneType = state.chartView.pendingZoneType;
+        state.chartView.pendingZoneType = null;
+        try {
+            drawing = styledDrawing({ ...drawing, color: safeColor, width: clamp(Number(drawing.width || 2), 1, 6), opacity: clamp(Number(drawing.opacity ?? 16), 0, 60) });
+        } finally {
+            state.chartView.pendingZoneType = pendingZoneType;
+        }
+        if (!state.chartView.drawingsVisible) {
+            state.chartView.drawingsVisible = true;
+            persistChartSettings();
+        }
+        commitDrawing(drawing);
+        showToast(`Đã vẽ ${DRAWING_TOOL_LABELS[type] || type} trên ${data.symbol} ${data.timeframe}`);
+        return true;
     }
 
     function movePaTrainingZone(step) {

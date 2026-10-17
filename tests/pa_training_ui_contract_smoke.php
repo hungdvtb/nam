@@ -109,6 +109,9 @@ $assertContains($paWorkspace, 'Bỏ ca này', 'skip-current-case action must use
 $assertContains($paWorkspaceCss, '.pa-ai-quick-action.pa-case-skip-visible', 'skip-current-case action must be visually distinct from icon-only actions');
 $assertContains($paWorkspaceCss, '.pa-symbol-choice-list', 'PA workspace CSS must style the compact symbol chooser');
 $assertContains($app, 'function paTrainingActionsWithLocalFallback', 'frontend must infer simple open-symbol commands when the API response has no action');
+$assertContains($app, 'function applyPaTrainingChartDrawingAction', 'PA AI chart actions must create persisted chart drawings');
+$assertContains($app, "action.type === 'draw_chart_annotation'", 'PA chat must execute chart-drawing actions');
+$assertContains($app, 'paTrainingChartQuestionAttachment(isPaTrainingDrawingRequest(message))', 'AI drawing requests must include current chart context');
 $assertContains($app, 'function inferPaTrainingOpenSymbolAction', 'frontend must parse commands like mở GBPUSD from the chat box');
 $assertContains($app, 'function setChartTimeframeMenuOpen', 'frontend must open and close the hidden timeframe dropdown explicitly');
 $assertContains($app, 'function positionChartTimeframeMenu', 'frontend must position the timeframe dropdown outside clipped toolbar overflow');
@@ -136,7 +139,7 @@ $assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember th
 $assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
 $assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
 $assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
-$assertContains($index, 'assets/app.js?v=20261017-pa-case-level-reset', 'PA case reset must use a fresh frontend cache version');
+$assertContains($index, 'assets/app.js?v=20261017-pa-ai-chart-drawing', 'AI chart drawing must use a fresh frontend cache version');
 $assertContains($index, 'assets/pa-workspace.css?v=20261017-pa-case-level-reset', 'PA case reset styles must use a fresh cache version');
 $assertContains($app, 'function paTrainingCaseHasRestorableChanges', 'adjusted PA teaching cases must detect changes against the original setup');
 $assertContains($app, 'data-pa-case-level-reset', 'adjusted PA teaching cases must expose a restore-original-levels button');

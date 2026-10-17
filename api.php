@@ -1269,9 +1269,13 @@ function paTrainingAiChat(JsonStore $store, array $payload): array
     $context = is_array($payload['context'] ?? null) ? $payload['context'] : [];
     $chartAttachment = is_array($payload['chart_attachment'] ?? null) ? $payload['chart_attachment'] : [];
     $memory = paTrainingMemory($store);
+    $wantsChartDrawing = paTrainingIsChartDrawingRequest($message);
     $actions = paTrainingChatActions($message, $context, $history);
     $lessons = paTrainingRelevantLessons($memory, $context, $zone, $trade, 8);
-    $ai = paTrainingOpenAICoachReply($message, $zone, $trade, $actions, $memory, $context, $history, $lessons, $chartAttachment);
+    $ai = paTrainingOpenAICoachReply($message, $zone, $trade, $actions, $memory, $context, $history, $lessons, $chartAttachment, $wantsChartDrawing);
+    if ($wantsChartDrawing && empty(array_filter($actions, static fn(array $action): bool => ($action['type'] ?? '') === 'draw_chart_annotation'))) {
+        $actions = array_merge($actions, paTrainingNormalizeAiChartActions($ai['chart_actions'] ?? [], $context, $chartAttachment));
+    }
     $provider = is_array($ai['provider'] ?? null) ? $ai['provider'] : ['used' => 'openai_chat', 'status' => 'openai_failed', 'error' => 'OpenAI không tr? l?i du?c.'];
     $reply = ($ai['ok'] ?? false) === true ? (string)$ai['reply'] : paTrainingProviderErrorReply($provider, $actions);
     if (paTrainingShouldSaveChatLesson($message, $actions)) {
@@ -1288,7 +1292,7 @@ function paTrainingAiChat(JsonStore $store, array $payload): array
     return ['ok' => true, 'reply' => $reply, 'actions' => $actions, 'scope' => $scope, 'messages' => array_slice(paTrainingChatMessagesForScope($messages, $scope), -120), 'provider' => $provider, 'relevant_lessons' => $lessons, 'pa_training_memory' => $memory];
 }
 
-function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade, array $actions, array $memory, array $context = [], array $history = [], array $relevantLessons = [], array $chartAttachment = []): array
+function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade, array $actions, array $memory, array $context = [], array $history = [], array $relevantLessons = [], array $chartAttachment = [], bool $wantsChartDrawing = false): array
 {
     try {
         $provider = ProviderFactory::fromConfigFile()->create('openai_chat');
@@ -1300,7 +1304,9 @@ function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade
             'role' => 'system',
             'content' => "B?n là AI Coach trong app d?y Price Action Forex H4/M15. Tr? l?i ti?ng Vi?t ng?n, th?c t?. Khi có ảnh chart và hình vẽ, hãy phân tích đúng các vùng/đường được đánh dấu; dữ liệu tọa độ trong phần đính kèm mô tả chúng. Phân biệt nhận xét kỹ thuật với khuyến nghị chắc chắn; nêu điều kiện và rủi ro. N?u user ra l?nh thao tác, xác nh?n thao tác app s? ch?y b?ng action n?i b?. Không h?a d?t l?nh th?t.",
         ]];
-        $messages[] = ['role' => 'system', 'content' => 'Only say an app action completed when app_actions_detected contains the matching action. If none is detected, ask for clarification and do not claim that you are opening or changing a chart.'];
+        $messages[] = ['role' => 'system', 'content' => $wantsChartDrawing
+            ? 'This user requested a chart drawing. Return exactly one JSON object with keys reply (Vietnamese string) and chart_actions (array). Each action must be {"type":"draw_chart_annotation","drawing":{...}}. Use only supported drawing types listed in the user data. Every point must use an existing global barIndex from chart_geometry.visible_bars and a real positive price from those candles/chart/context. Never invent bar indexes outside chart_geometry.bar_count. For zones use type rect, two points at the price boundaries, and zoneType supply or demand only when justified. For lines use two points; for hline use price; for vline use barIndex; for text/markers use point; position uses direction, entry, stop, target, startBar, endBar. You may return multiple drawings when requested. Prefer the selected trade/zone values when the user asks to draw that setup. If the chart/context cannot support a precise drawing, return chart_actions:[] and ask one short clarifying question in reply. Do not say you drew anything unless chart_actions contains it. If app_actions_detected already contains draw_chart_annotation, return chart_actions:[] to avoid duplicate drawings.'
+            : 'Only say an app action completed when app_actions_detected contains the matching action. If none is detected, ask for clarification and do not claim that you are opening or changing a chart.'];
         foreach (array_slice($history, -12) as $item) {
             if (!is_array($item)) continue;
             $role = in_array(($item['role'] ?? ''), ['user', 'assistant'], true) ? (string)$item['role'] : 'user';
@@ -1314,8 +1320,17 @@ function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade
                 'symbol' => (string)($chartAttachment['symbol'] ?? ''),
                 'timeframe' => (string)($chartAttachment['timeframe'] ?? ''),
                 'drawings' => is_array($chartAttachment['drawings'] ?? null) ? array_slice($chartAttachment['drawings'], 0, 12) : [],
+                'chart_geometry' => [
+                    'bar_count' => (int)($chartAttachment['barCount'] ?? 0),
+                    'visible_first' => (int)($chartAttachment['visibleFirst'] ?? 0),
+                    'visible_last_exclusive' => (int)($chartAttachment['visibleLastExclusive'] ?? 0),
+                    'price_low' => $chartAttachment['priceLow'] ?? null,
+                    'price_high' => $chartAttachment['priceHigh'] ?? null,
+                    'visible_bars' => is_array($chartAttachment['visibleBars'] ?? null) ? array_slice($chartAttachment['visibleBars'], 0, 120) : [],
+                ],
                 'note' => 'Ảnh chart (nếu có) thể hiện biểu đồ hiện tại cùng các hình vẽ được gửi để hỏi.',
             ],
+            'supported_chart_drawing_types' => $wantsChartDrawing ? paTrainingSupportedChartDrawingTypes() : [],
             'selected_zone' => $zone,
             'selected_trade_case' => $trade,
             'app_actions_detected' => $actions,
@@ -1331,11 +1346,23 @@ function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade
         } else {
             $messages[] = ['role' => 'user', 'content' => $userContent];
         }
-        $response = $provider->complete(['messages' => $messages, 'model_alias' => 'default', 'response_format' => 'plain_text']);
+        $response = $provider->complete(['messages' => $messages, 'model_alias' => 'default', 'response_format' => $wantsChartDrawing ? 'json_object' : 'plain_text']);
         if (($response['ok'] ?? false) !== true) {
             return ['ok' => false, 'provider' => ['used' => 'openai_chat', 'status' => (string)($response['error']['category'] ?? 'openai_failed'), 'error' => (string)($response['error']['message'] ?? 'OpenAI không tr? l?i du?c.')]];
         }
-        return ['ok' => true, 'reply' => trim((string)($response['text'] ?? '')), 'provider' => ['used' => 'openai_chat', 'status' => 'ok', 'model' => (string)($response['model_name'] ?? '')]];
+        $replyText = trim((string)($response['text'] ?? ''));
+        $chartActions = [];
+        if ($wantsChartDrawing) {
+            $structured = json_decode($replyText, true);
+            if (is_array($structured)) {
+                $replyText = trim((string)($structured['reply'] ?? ''));
+                $chartActions = is_array($structured['chart_actions'] ?? null) ? $structured['chart_actions'] : [];
+            } else {
+                $replyText = '';
+            }
+            if ($replyText === '') $replyText = $chartActions ? 'Mình đang đánh dấu các hình được chọn lên biểu đồ.' : 'Mình chưa xác định được tọa độ đủ chắc chắn để vẽ. Hãy chỉ rõ vùng/giá hoặc loại hình cần đánh dấu.';
+        }
+        return ['ok' => true, 'reply' => $replyText, 'chart_actions' => $chartActions, 'provider' => ['used' => 'openai_chat', 'status' => 'ok', 'model' => (string)($response['model_name'] ?? '')]];
     } catch (Throwable $e) {
         return ['ok' => false, 'provider' => ['used' => 'openai_chat', 'status' => 'exception', 'error' => $e->getMessage()]];
     }
@@ -1456,6 +1483,8 @@ function paTrainingChatActions(string $message, array $context = [], array $hist
     if ($wantsSaveSession) $actions[] = ['type' => 'save_current_session', 'note' => paTrainingLimitText($message, 1200)];
     if ($wantsLessonSave) $actions[] = ['type' => 'save_chat_lesson'];
     if ($symbolTarget === '' && $wantsOpen && $timeframeTarget !== '') $actions[] = ['type' => 'open_chart', 'timeframe' => $timeframeTarget];
+    $drawingAction = paTrainingExplicitChartDrawingAction($message, $context);
+    if ($drawingAction !== null) $actions[] = $drawingAction;
     $indicatorMap = [
         'ema20' => ['pattern' => '/\b(?:ema|ma)\s*20\b/u', 'label' => 'EMA 20'],
         'ema50' => ['pattern' => '/\b(?:ema|ma)\s*50\b/u', 'label' => 'EMA 50'],
@@ -1479,6 +1508,103 @@ function paTrainingChatActions(string $message, array $context = [], array $hist
     if ($wantsPrevious) $actions[] = ['type' => $isTradeCase ? 'previous_trade' : 'previous_zone'];
     if ($wantsNext) $actions[] = ['type' => $isTradeCase ? 'next_trade' : 'next_zone'];
     return $actions;
+}
+
+function paTrainingIsChartDrawingRequest(string $message): bool
+{
+    $text = paTrainingLower($message);
+    return paTrainingContainsAny($text, ['vẽ', 'draw ', 'đánh dấu', 'danh dau', 'khoanh', 'kẻ lên chart', 'ke len chart', 'tô vùng', 'to vung'])
+        || preg_match('/(?<![\p{L}\p{N}])ve(?![\p{L}\p{N}])/u', $text) === 1;
+}
+
+function paTrainingSupportedChartDrawingTypes(): array
+{
+    return ['rect','rotated-rect','circle','ellipse','triangle-shape','fib-circle','fib-wedge','gann-square','gann-box','volume-profile','price-range','date-range','date-price-range','trendline','ray','extended-line','trend-angle','fib','fib-extension','fib-time-zone','fib-fan','gann-fan','forecast','bars-pattern','anchored-vwap','arc','curve','arrow','measure','parallel-channel','regression-trend','flat-top-bottom','disjoint-channel','fib-channel','polyline','path','brush','highlighter','xabcd','abcd','triangle-pattern','three-drives','head-shoulders','elliott-wave','cyclic-lines','pitchfork','inside-pitchfork','schiff-pitchfork','modified-schiff','hline','hray','vline','cross-line','dot','alert','price-label','pin','flag','icon','arrow-marker','up-arrow','down-arrow','text','note','price-note','callout','comment','table','position'];
+}
+
+function paTrainingExplicitChartDrawingAction(string $message, array $context): ?array
+{
+    if (!paTrainingIsChartDrawingRequest($message)) return null;
+    $text = paTrainingLower($message);
+    $number = '(\\d+(?:[.,]\\d+)?|\\.\\d+)';
+    if (paTrainingContainsAny($text, ['vùng','vung','zone','khoanh','rectangle','hình chữ nhật','hinh chu nhat','box'])
+        && preg_match('/(?<![\\d.])' . $number . '\\s*(?:-|–|—|đến|tới|to)\\s*' . $number . '(?![\\d.])/iu', $message, $range) === 1) {
+        $first = (float)str_replace(',', '.', $range[1]);
+        $second = (float)str_replace(',', '.', $range[2]);
+        if ($first > 0 && $second > 0 && $first !== $second) {
+            $zoneType = paTrainingContainsAny($text, ['cung','supply','sell','bán','ban']) ? 'supply' : (paTrainingContainsAny($text, ['cầu','cau','demand','buy','mua']) ? 'demand' : '');
+            $label = $zoneType === 'supply' ? 'VÙNG CANH SELL' : ($zoneType === 'demand' ? 'VÙNG CANH BUY' : 'VÙNG ĐÁNH DẤU');
+            return ['type' => 'draw_chart_annotation', 'symbol' => paTrainingSymbol((string)($context['symbol'] ?? '')), 'timeframe' => strtoupper((string)($context['timeframe'] ?? '')), 'drawing' => ['type' => 'rect', 'priceRange' => [min($first, $second), max($first, $second)], 'zoneType' => $zoneType ?: null, 'label' => $label, 'color' => $zoneType === 'supply' ? '#ef4444' : ($zoneType === 'demand' ? '#10b981' : '#2563eb'), 'opacity' => 14]];
+        }
+    }
+    $isHorizontal = paTrainingContainsAny($text, ['đường ngang','duong ngang','hline','kháng cự','khang cu','hỗ trợ','ho tro','mức giá','muc gia','price line']);
+    if ($isHorizontal && preg_match('/(?:tại|tai|mức(?: giá)?|gia|price|hỗ trợ|ho tro|kháng cự|khang cu)\\s*(?::|là|la|at)?\\s*' . $number . '(?![\\d.])/iu', $message, $match) === 1) {
+        $price = (float)str_replace(',', '.', $match[1]);
+        if ($price > 0) return ['type' => 'draw_chart_annotation', 'symbol' => paTrainingSymbol((string)($context['symbol'] ?? '')), 'timeframe' => strtoupper((string)($context['timeframe'] ?? '')), 'drawing' => ['type' => 'hline', 'price' => $price, 'label' => paTrainingLimitText($message, 120), 'color' => '#2563eb']];
+    }
+    return null;
+}
+
+function paTrainingNormalizeAiChartActions(array $actions, array $context, array $chartAttachment): array
+{
+    $types = array_flip(paTrainingSupportedChartDrawingTypes());
+    $symbol = paTrainingSymbol((string)($context['symbol'] ?? $chartAttachment['symbol'] ?? ''));
+    $timeframe = strtoupper((string)($context['timeframe'] ?? $chartAttachment['timeframe'] ?? ''));
+    $barCount = max(0, (int)($chartAttachment['barCount'] ?? 0));
+    $validPrice = static fn($value): bool => is_numeric($value) && is_finite((float)$value) && (float)$value > 0 && (float)$value < 1000000000;
+    $normalized = [];
+    foreach (array_slice($actions, 0, 8) as $item) {
+        if (!is_array($item) || (string)($item['type'] ?? '') !== 'draw_chart_annotation') continue;
+        $drawing = is_array($item['drawing'] ?? null) ? $item['drawing'] : [];
+        $type = (string)($drawing['type'] ?? '');
+        if (!isset($types[$type])) continue;
+        $safe = ['type' => $type];
+        $invalidBarReference = false;
+        foreach (['color','label','text','zoneType','opacity','width','direction','entry','stop','target','price'] as $key) {
+            if (!array_key_exists($key, $drawing)) continue;
+            if (in_array($key, ['entry','stop','target','price'], true) && !$validPrice($drawing[$key])) continue;
+            if ($key === 'color' && preg_match('/^#[0-9a-f]{6}$/i', (string)$drawing[$key]) !== 1) continue;
+            if ($key === 'zoneType' && !in_array($drawing[$key], ['supply','demand',null], true)) continue;
+            if (in_array($key, ['label','text'], true)) $safe[$key] = paTrainingLimitText(strip_tags((string)$drawing[$key]), 160);
+            elseif ($key === 'opacity') $safe[$key] = max(0, min(60, (int)$drawing[$key]));
+            elseif ($key === 'width') $safe[$key] = max(1, min(6, (int)$drawing[$key]));
+            elseif ($key === 'direction' && in_array($drawing[$key], ['long','short'], true)) $safe[$key] = $drawing[$key];
+            elseif ($key !== 'direction') $safe[$key] = $drawing[$key];
+        }
+        if (isset($drawing['priceRange']) && is_array($drawing['priceRange']) && count($drawing['priceRange']) >= 2 && $validPrice($drawing['priceRange'][0]) && $validPrice($drawing['priceRange'][1])) $safe['priceRange'] = array_values(array_map('floatval', array_slice($drawing['priceRange'], 0, 2)));
+        foreach (['barIndex','startBar','endBar'] as $key) {
+            if (!isset($drawing[$key])) continue;
+            if (!is_numeric($drawing[$key]) || $barCount < 1 || (int)$drawing[$key] < 0 || (int)$drawing[$key] >= $barCount) {
+                $invalidBarReference = true;
+                continue;
+            }
+            $safe[$key] = (int)$drawing[$key];
+        }
+        $points = [];
+        foreach (array_slice(is_array($drawing['points'] ?? null) ? $drawing['points'] : [], 0, 8) as $point) {
+            if (!is_array($point) || !$validPrice($point['price'] ?? null) || !is_numeric($point['barIndex'] ?? null) || $barCount < 1 || (int)$point['barIndex'] < 0 || (int)$point['barIndex'] >= $barCount) {
+                $invalidBarReference = true;
+                continue;
+            }
+            $points[] = ['barIndex' => (int)$point['barIndex'], 'price' => (float)$point['price']];
+        }
+        if ($points) $safe['points'] = $points;
+        if (isset($drawing['point'])) {
+            $point = $drawing['point'];
+            if (is_array($point) && $validPrice($point['price'] ?? null) && is_numeric($point['barIndex'] ?? null) && $barCount > 0 && (int)$point['barIndex'] >= 0 && (int)$point['barIndex'] < $barCount) $safe['point'] = ['barIndex' => (int)$point['barIndex'], 'price' => (float)$point['price']];
+            else $invalidBarReference = true;
+        }
+        if ($invalidBarReference) continue;
+        if ($type === 'position' && (!isset($safe['entry'], $safe['stop'], $safe['target']) || !isset($safe['direction']))) continue;
+        if (in_array($type, ['hline','hray','alert'], true) && !isset($safe['price'])) continue;
+        if ($type === 'vline' && !isset($safe['barIndex'])) continue;
+        if ($type === 'cross-line' && (!isset($safe['barIndex']) || !isset($safe['price']))) continue;
+        if (in_array($type, ['text','note','price-note','callout','comment','table','price-label','dot','pin','flag','icon','arrow-marker','up-arrow','down-arrow'], true) && !isset($safe['point'])) continue;
+        if (in_array($type, ['rect','rotated-rect','circle','ellipse','triangle-shape','fib-circle','fib-wedge','gann-square','gann-box','volume-profile','price-range','date-range','date-price-range','trendline','ray','extended-line','trend-angle','fib','fib-extension','fib-time-zone','fib-fan','gann-fan','forecast','bars-pattern','anchored-vwap','arc','curve','arrow','measure','parallel-channel','regression-trend','flat-top-bottom','disjoint-channel','fib-channel'], true) && count($points) < 2) continue;
+        if (in_array($type, ['polyline','path','brush','highlighter','xabcd','abcd','triangle-pattern','three-drives','head-shoulders','elliott-wave','cyclic-lines','pitchfork','inside-pitchfork','schiff-pitchfork','modified-schiff'], true) && count($points) < 2) continue;
+        $normalized[] = ['type' => 'draw_chart_annotation', 'symbol' => $symbol, 'timeframe' => $timeframe, 'drawing' => $safe];
+    }
+    return $normalized;
 }
 
 function openAiLocalSettingsStatus(): array
