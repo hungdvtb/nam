@@ -1991,7 +1991,7 @@
     <script src="assets/help-texts.js?v=20260618-vi4"></script>
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
-    <script src="assets/pa-workspace.js?v=20261016-trade-level-markers"></script>
+    <script src="assets/pa-workspace.js?v=20261017-pa-sync-null-fix"></script>
     <script src="assets/app.js?v=20261017-chart-pan-smooth-v2"></script>
 </body>
 </html>

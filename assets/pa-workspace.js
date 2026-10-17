@@ -510,8 +510,6 @@
             });
             renderSymbolChoices(snapshot.symbol || '');
             setText('paWorkspacePrice', snapshot.price || '—');
-            setText('paCoachContextSymbol', `${snapshot.symbol || '—'} · ${snapshot.timeframe || 'H4'}`);
-            setText('paCoachContextLabel', snapshot.hasCase ? 'Ca đang chọn' : 'Chart đang xem');
             actionButtons.forEach((buttons, action) => {
                 buttons.forEach((button) => {
                     const isTool = action.startsWith('tool:');

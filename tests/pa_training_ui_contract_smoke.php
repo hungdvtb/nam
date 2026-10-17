@@ -38,6 +38,10 @@ $coachAsideEnd = $coachAsideStart === false ? false : strpos($index, '</aside>',
 $coachAside = $coachAsideStart === false || $coachAsideEnd === false ? '' : substr($index, $coachAsideStart, $coachAsideEnd - $coachAsideStart);
 $assertNotContains($coachAside, '<h2>AI Coach</h2>', 'PA chat must omit the large AI Coach title header');
 $assertNotContains($coachAside, 'pa-coach-context', 'PA chat must omit the chart context tile');
+preg_match_all("/setText\('([A-Za-z][A-Za-z0-9]*)'/", $paWorkspace, $workspaceTextTargets);
+foreach ($workspaceTextTargets[1] as $id) {
+    $assertContains($index, 'id="' . $id . '"', "PA workspace text target {$id} must exist in the page");
+}
 $assertContains($index, 'paTrainingChartMount', 'page must include PA mount for shared TradingView-style chart');
 $assertContains($index, 'id="marketChartCrosshair"', 'chart must render crosshair on a dedicated overlay canvas');
 $assertContains($index, 'paWorkspaceSymbolButton', 'PA workspace header symbol must be clickable');
