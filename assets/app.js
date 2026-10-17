@@ -4,6 +4,9 @@
     let paNearbyZoneCache = null;
     let paNearbyZonesVisible = false;
     let paWorkspacePersistTimer = null;
+    let chartInteractionFrame = 0;
+    let chartInteractionData = null;
+    let chartCrosshairFrame = 0;
     const LEGACY_DEFAULT_MT5_BARS = 10000;
     const DEFAULT_MT5_BARS = 100000;
     const MAX_MT5_BARS = 100000;
@@ -433,6 +436,7 @@
             timeframe: 'H4',
             barsOnScreen: 180,
             rightOffset: 0,
+            panPixelOffset: 0,
             priceScale: 1,
             priceOffset: 0,
             scaleMode: 'auto',
@@ -10013,15 +10017,41 @@
         ctx.fillText(`${c.symbol} ${displayDirection(c.direction)} ${displaySetup(c.setup_type)}`, plot.left, height - 16);
     }
 
-    function drawMarketChart(data) {
+    function scheduleChartInteractionDraw(data) {
+        chartInteractionData = data;
+        if (chartInteractionFrame) return;
+        chartInteractionFrame = requestAnimationFrame(() => {
+            chartInteractionFrame = 0;
+            const nextData = chartInteractionData;
+            chartInteractionData = null;
+            if (nextData && nextData === state.activeMarketData) drawMarketChart(nextData, { interactionFrame: true });
+        });
+    }
+
+    function scheduleChartCrosshairDraw() {
+        if (chartCrosshairFrame) return;
+        chartCrosshairFrame = requestAnimationFrame(() => {
+            chartCrosshairFrame = 0;
+            drawMarketChartCrosshairOverlay();
+        });
+    }
+
+    function drawMarketChart(data, options = {}) {
+        if (chartInteractionFrame) {
+            cancelAnimationFrame(chartInteractionFrame);
+            chartInteractionFrame = 0;
+            chartInteractionData = null;
+        }
         const canvas = $('#marketChart');
         const ctx = canvas.getContext('2d');
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
         if (!rect.width || !rect.height) return;
-        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
-        ctx.scale(dpr, dpr);
+        const pixelWidth = Math.max(1, Math.floor(rect.width * dpr));
+        const pixelHeight = Math.max(1, Math.floor(rect.height * dpr));
+        if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+        if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         const width = canvas.width / dpr;
         const height = canvas.height / dpr;
@@ -10030,11 +10060,14 @@
         ctx.fillRect(0, 0, width, height);
 
         const allBars = data?.bars || [];
-        $('#marketChartTitle').textContent = data ? data.symbol : 'Biểu đồ dữ liệu MT5';
-        $('#marketChartMeta').textContent = data ? `${data.timeframe} · ${number(allBars.length)} nến` : 'Chưa chọn tệp';
+        if (!options.interactionFrame) {
+            $('#marketChartTitle').textContent = data ? data.symbol : 'Biểu đồ dữ liệu MT5';
+            $('#marketChartMeta').textContent = data ? `${data.timeframe} · ${number(allBars.length)} nến` : 'Chưa chọn tệp';
+        }
         if (!allBars.length) {
             state.chartView.lastLayout = null;
             drawPaTrainingLevelOverlay(null);
+            drawMarketChartCrosshairOverlay(null, data);
             ctx.fillStyle = '#65717f';
             ctx.fillText('Không có dữ liệu nến để vẽ.', 24, 40);
             return;
@@ -10049,8 +10082,10 @@
         } else {
             ensureSelectedTrade(analytics);
         }
-        renderBacktestPanels(analytics);
-        renderReplayControls(data);
+        if (!options.interactionFrame) {
+            renderBacktestPanels(analytics);
+            renderReplayControls(data);
+        }
 
         drawChartGrid(ctx, layout, data.symbol);
         drawDataWarnings(ctx, layout, analytics);
@@ -10063,11 +10098,13 @@
         drawMarketDrawings(ctx, layout, data);
         drawMarketAxis(ctx, layout, data.symbol);
         drawMarketFooter(ctx, layout, data);
-        drawChartCrosshair(ctx, layout, data);
         drawPaTrainingLevelOverlay(layout);
-        updatePaTrainingTimeframeNotice(data);
-        renderFloatingToolbar();
-        renderFavoriteToolbar();
+        drawMarketChartCrosshairOverlay(layout, data);
+        if (!options.interactionFrame) {
+            updatePaTrainingTimeframeNotice(data);
+            renderFloatingToolbar();
+            renderFavoriteToolbar();
+        }
     }
 
     function buildMarketChartLayout(data, width, height) {
@@ -10163,9 +10200,10 @@
         const hi = fromScaleValue(scaleHi);
         const barStep = priceArea.width / Math.max(1, visibleCount - 1);
 
-        const x = (barIndex) => priceArea.left + (barIndex - first) * barStep;
+        const panPixelOffset = Number(state.chartView.panPixelOffset) || 0;
+        const x = (barIndex) => priceArea.left + (barIndex - first) * barStep + panPixelOffset;
         const y = (price) => priceArea.top + ((scaleHi - toScaleValue(price)) / Math.max(0.0000001, scaleHi - scaleLo)) * priceArea.height;
-        const barIndexAtX = (px) => first + (px - priceArea.left) / Math.max(1, barStep);
+        const barIndexAtX = (px) => first + (px - priceArea.left - panPixelOffset) / Math.max(1, barStep);
         const priceAtY = (py) => fromScaleValue(scaleHi - ((py - priceArea.top) / Math.max(1, priceArea.height)) * (scaleHi - scaleLo));
 
         return {
@@ -10196,6 +10234,7 @@
             barIndexAtX,
             priceAtY,
             barStep,
+            panPixelOffset,
         };
     }
 
@@ -11242,6 +11281,25 @@
         });
     }
 
+    function drawMarketChartCrosshairOverlay(layout = state.chartView.lastLayout, data = state.activeMarketData) {
+        const chart = $('#marketChart');
+        if (!chart?.parentElement) return;
+        let overlay = $('#marketChartCrosshair');
+        if (!overlay) {
+            overlay = document.createElement('canvas');
+            overlay.id = 'marketChartCrosshair';
+            overlay.setAttribute('aria-hidden', 'true');
+            chart.parentElement.appendChild(overlay);
+        }
+        const dpr = window.devicePixelRatio || 1;
+        if (overlay.width !== chart.width) overlay.width = chart.width;
+        if (overlay.height !== chart.height) overlay.height = chart.height;
+        const ctx = overlay.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, chart.width / dpr, chart.height / dpr);
+        if (layout && data) drawChartCrosshair(ctx, layout, data);
+    }
+
     function drawChartCrosshair(ctx, layout, data) {
         const point = state.chartView.crosshairPoint;
         if (!point) return;
@@ -11884,6 +11942,7 @@
         const bars = state.activeMarketData?.bars || [];
         state.chartView.barsOnScreen = Math.min(180, Math.max(40, bars.length || 180));
         state.chartView.rightOffset = 0;
+        state.chartView.panPixelOffset = 0;
         state.chartView.priceScale = 1;
         state.chartView.priceOffset = 0;
         state.chartView.draftDrawing = null;
@@ -12404,20 +12463,19 @@
             }
             if (state.chartView.candleInfoVisible) renderChartTooltip(point, layout);
             else hideChartTooltip();
-            drawMarketChart(state.activeMarketData);
+            scheduleChartCrosshairDraw();
             return;
         }
 
         const dx = point.x - drag.x;
         const dy = point.y - drag.y;
         if (drag.mode === 'pan') {
-            const deltaBars = Math.round(dx / Math.max(1, layout.barStep));
+            const deltaBars = Math.trunc(dx / Math.max(1, layout.barStep));
             const offsetLimits = chartRightOffsetLimits(layout.allBars.length, state.chartView.barsOnScreen);
-            state.chartView.rightOffset = clamp(
-                drag.rightOffset + deltaBars,
-                offsetLimits.min,
-                offsetLimits.max
-            );
+            const requestedOffset = drag.rightOffset + deltaBars;
+            const nextOffset = clamp(requestedOffset, offsetLimits.min, offsetLimits.max);
+            state.chartView.rightOffset = nextOffset;
+            state.chartView.panPixelOffset = nextOffset === requestedOffset ? dx - deltaBars * layout.barStep : 0;
             state.chartView.priceOffset = drag.priceOffset + (dy / Math.max(1, layout.priceArea.height)) * drag.priceRange;
         } else if (drag.mode === 'scale') {
             state.chartView.priceScale = clamp(drag.priceScale * (1 - dy * 0.012), 0.2, 20);
@@ -12432,9 +12490,10 @@
         } else if (drag.mode === 'edit-pa-level') {
             updatePaTrainingLevelDrag(drag, point, layout);
             drawPaTrainingLevelOverlay(layout);
+            scheduleChartCrosshairDraw();
             return;
         }
-        drawMarketChart(state.activeMarketData);
+        scheduleChartInteractionDraw(state.activeMarketData);
     }
 
     function handleChartMouseUp(event) {
@@ -12518,8 +12577,10 @@
             drawMarketChart(state.activeMarketData);
         }
         state.chartView.drag = null;
+        if (drag?.mode === 'pan') state.chartView.panPixelOffset = 0;
         const canvas = $('#marketChart');
         if (canvas) canvas.style.cursor = state.chartView.activeTool === 'cursor' ? 'grab' : 'crosshair';
+        if (drag?.mode === 'pan' || drag?.mode === 'scale') drawMarketChart(state.activeMarketData);
         if ((drag?.mode === 'pan' || drag?.mode === 'scale') && state.activeTab === 'pa-training' && state.activeMarketData) {
             persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
         }
@@ -12583,7 +12644,7 @@
         if (state.chartView.drag) return;
         state.chartView.crosshairPoint = null;
         hideChartTooltip();
-        if (state.activeMarketData) drawMarketChart(state.activeMarketData);
+        scheduleChartCrosshairDraw();
     }
 
     function handleChartContextMenu(event) {
@@ -12968,7 +13029,7 @@
         } else {
             draft.points[1] = domainPoint;
         }
-        drawMarketChart(state.activeMarketData);
+        scheduleChartInteractionDraw(state.activeMarketData);
     }
 
     function eraseNearestDrawing(point, layout) {

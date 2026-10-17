@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20261015-case-drag-overlay">
+    <link rel="stylesheet" href="assets/styles.css?v=20261017-chart-pan-smooth">
     <link rel="stylesheet" href="assets/pa-workspace.css?v=20261017-pa-chat-compact">
 </head>
 <body>
@@ -1598,6 +1598,7 @@
                         </div>
                         <div class="chart-canvas-wrap">
                             <canvas id="marketChart" width="1200" height="560"></canvas>
+                            <canvas id="marketChartCrosshair" aria-hidden="true"></canvas>
                             <div class="chart-tooltip" id="chartTooltip"></div>
                             <div class="favorite-toolbar" id="chartFavoriteToolbar"></div>
                             <div class="pa-replay-floating-panel" id="chartReplayFloatingPanel" hidden>
@@ -1991,7 +1992,7 @@
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
     <script src="assets/pa-workspace.js?v=20261016-trade-level-markers"></script>
-    <script src="assets/app.js?v=20261017-pa-chat-compact"></script>
+    <script src="assets/app.js?v=20261017-chart-pan-smooth"></script>
 </body>
 </html>
 

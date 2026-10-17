@@ -39,6 +39,7 @@ $coachAside = $coachAsideStart === false || $coachAsideEnd === false ? '' : subs
 $assertNotContains($coachAside, '<h2>AI Coach</h2>', 'PA chat must omit the large AI Coach title header');
 $assertNotContains($coachAside, 'pa-coach-context', 'PA chat must omit the chart context tile');
 $assertContains($index, 'paTrainingChartMount', 'page must include PA mount for shared TradingView-style chart');
+$assertContains($index, 'id="marketChartCrosshair"', 'chart must render crosshair on a dedicated overlay canvas');
 $assertContains($index, 'paWorkspaceSymbolButton', 'PA workspace header symbol must be clickable');
 $assertContains($index, 'data-pa-header-timeframe="H4"', 'PA workspace header must switch directly to H4');
 $assertContains($index, 'data-pa-header-timeframe="M15"', 'PA workspace header must switch directly to M15');
@@ -147,7 +148,8 @@ $assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember th
 $assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
 $assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
 $assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
-$assertContains($index, 'assets/app.js?v=20261017-pa-chat-compact', 'PA chat changes must use a fresh frontend cache version');
+$assertContains($index, 'assets/app.js?v=20261017-chart-pan-smooth', 'chart interaction changes must use a fresh frontend cache version');
+$assertContains($index, 'assets/styles.css?v=20261017-chart-pan-smooth', 'chart interaction changes must use a fresh stylesheet cache version');
 $assertContains($index, 'assets/pa-workspace.css?v=20261017-pa-chat-compact', 'PA chat changes must use a fresh stylesheet cache version');
 $assertContains($app, 'function paTrainingCaseHasRestorableChanges', 'adjusted PA teaching cases must detect changes against the original setup');
 $assertContains($app, 'data-pa-case-level-reset', 'adjusted PA teaching cases must expose a restore-original-levels button');
@@ -196,6 +198,10 @@ $assertContains($api, 'function paTrainingBuildTeachingCase', 'API must convert 
 $assertContains($api, 'auto_price_action_scan', 'API must scan from the beginning of chart data to create sequential PA teaching cases');
 $assertContains($api, 'firstTouchCandleNumber', 'generated cases must include candle numbers for the touch/entry candle');
 $assertContains($app, 'function drawPaTrainingTeachingCaseOverlay', 'frontend must draw the active teaching case zone, entry, SL and TP on chart');
+$assertContains($app, 'function scheduleChartInteractionDraw', 'chart drag renders must be coalesced to animation frames');
+$assertContains($app, 'function scheduleChartCrosshairDraw', 'crosshair updates must avoid redrawing the complete chart');
+$assertContains($app, 'panPixelOffset', 'chart panning must preserve sub-candle pointer movement smoothly');
+$assertContains($css, '#marketChartCrosshair', 'crosshair overlay must fill the chart canvas without receiving pointer events');
 $assertContains($app, 'function focusPaTrainingTeachingCaseWindow', 'frontend must focus the chart around the active teaching case');
 $assertContains($index, 'chartJumpStartBtn', 'chart toolbar should keep a single jump-to-start control beside chart fit buttons');
 $assertContains($index, 'chartReplayPanelToggleBtn', 'PA chart toolbar must expose one compact replay toggle button');
