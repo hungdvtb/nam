@@ -57,6 +57,10 @@ data/market_data/*.json
 
 File memory JSON export là nguồn dữ liệu gốc để rebuild hoặc kiểm tra một model AI mới sau này.
 
+### Đồng bộ dữ liệu Dạy Price Action
+
+Sau khi dạy ở local, chạy `scripts/sync_pa_training_to_namtrade.ps1` để gộp bài chấm vùng/setup, bài học, vùng tự vẽ và lịch sử AI Coach lên Namtrade qua SSH. Dữ liệu đang có trên Namtrade được giữ lại; bản ghi trùng ID không bị nhân đôi và bản sửa mới hơn được giữ. Có thể chạy lại an toàn. Mỗi lần có thay đổi sẽ sao lưu dữ liệu production bên ngoài thư mục web tại `/var/backups/namtrade-pa-training/`. Lệnh này chỉ đồng bộ dữ liệu PA, không deploy code hay nến MT5.
+
 ## Kết nối MT5
 
 1. Mở MT5 và đăng nhập tài khoản demo Exness.

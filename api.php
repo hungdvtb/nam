@@ -880,9 +880,9 @@ function paTrainingFeedbackSave(JsonStore $store, array $payload): array
     if ($kind === 'zone') array_unshift($m['zone_reviews'], $review); else array_unshift($m['setup_reviews'], $review);
     $lesson = paTrainingLessonFromFeedback($review);
     if ($lesson) array_unshift($m['lessons'], $lesson);
-    $m['zone_reviews'] = array_slice($m['zone_reviews'], 0, 2000);
-    $m['setup_reviews'] = array_slice($m['setup_reviews'], 0, 2000);
-    $m['lessons'] = array_slice($m['lessons'], 0, 1000);
+    $m['zone_reviews'] = array_slice($m['zone_reviews'], 0, 4000);
+    $m['setup_reviews'] = array_slice($m['setup_reviews'], 0, 4000);
+    $m['lessons'] = array_slice($m['lessons'], 0, 2000);
     paTrainingSaveMemory($store, $m);
     return ['ok' => true, 'review' => $review, 'pa_training_memory' => paTrainingMemory($store)];
 }
@@ -927,7 +927,7 @@ function paTrainingStoreLessons(JsonStore $store, array $m, array $lessons): arr
     // so adding a lesson cannot discard records retained in the trash.
     $m = paTrainingMemory($store, true);
     foreach ($lessons as $lesson) if (is_array($lesson)) array_unshift($m['lessons'], $lesson);
-    $m['lessons'] = array_slice(array_values($m['lessons']), 0, 1000);
+    $m['lessons'] = array_slice(array_values($m['lessons']), 0, 2000);
     paTrainingSaveMemory($store, $m);
     return paTrainingMemory($store);
 }
@@ -993,7 +993,7 @@ function paTrainingAppendChatMessages(JsonStore $store, array $new): array
     $messages = $store->readJson('pa_training/chat_history.json', []);
     if (!is_array($messages)) $messages = [];
     foreach ($new as $message) if (is_array($message)) $messages[] = $message;
-    $messages = array_slice($messages, -5000);
+    $messages = array_slice($messages, -10000);
     $store->writeJson('pa_training/chat_history.json', $messages);
     return $messages;
 }
