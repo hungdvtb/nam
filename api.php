@@ -196,17 +196,83 @@ function marketFiles(): array
         $name = basename($path);
         $parts = explode('_', preg_replace('/\.json$/i', '', $name) ?: '');
         $item = ['file' => $name, 'symbol' => strtoupper($parts[0] ?? ''), 'timeframe' => strtoupper($parts[1] ?? ''), 'bars' => 0, 'fetched_at' => ''];
-        $data = json_decode(file_get_contents($path) ?: '', true);
-        if (is_array($data)) {
-            $item['symbol'] = strtoupper((string)($data['symbol'] ?? $item['symbol']));
-            $item['timeframe'] = strtoupper((string)($data['timeframe'] ?? $item['timeframe']));
-            $item['bars'] = is_array($data['bars'] ?? null) ? count($data['bars']) : 0;
-            $item['fetched_at'] = (string)($data['fetched_at'] ?? '');
-        }
-        $items[] = $item;
+        $items[] = marketFileMetadata($path, $item);
     }
     usort($items, static fn(array $a, array $b): int => [$a['symbol'], $a['timeframe']] <=> [$b['symbol'], $b['timeframe']]);
     return $items;
+}
+
+function marketFileMetadata(string $path, array $fallback): array
+{
+    $handle = @fopen($path, 'rb');
+    if ($handle === false) return $fallback;
+
+    $header = fread($handle, 8192);
+    if (is_string($header)) {
+        foreach (['symbol', 'timeframe', 'fetched_at'] as $field) {
+            if (preg_match('/"' . preg_quote($field, '/') . '"\s*:\s*"([^"\\\\]*)"/', $header, $matches)) {
+                $fallback[$field] = $field === 'fetched_at' ? $matches[1] : strtoupper($matches[1]);
+            }
+        }
+        if (preg_match('/"bars"\s*:\s*\[/s', $header, $matches, PREG_OFFSET_CAPTURE)) {
+            $offset = $matches[0][1] + strlen($matches[0][0]);
+            if (fseek($handle, $offset) === 0) {
+                $fallback['bars'] = countMarketFileBars($handle);
+            }
+        }
+    }
+    fclose($handle);
+    return $fallback;
+}
+
+function countMarketFileBars($handle): int
+{
+    $start = ftell($handle);
+    $probe = fread($handle, 16);
+    if (is_string($probe) && str_starts_with($probe, '{"time":')) {
+        fseek($handle, $start);
+        $count = 0;
+        $carry = '';
+        while (!feof($handle)) {
+            $chunk = fread($handle, 65536);
+            if ($chunk === false || $chunk === '') break;
+            $scan = $carry . $chunk;
+            $count += substr_count($scan, '{"time":');
+            $carry = substr($scan, -7);
+        }
+        return $count;
+    }
+    fseek($handle, $start);
+
+    $count = 0;
+    $objectDepth = 0;
+    $inString = false;
+    $escaped = false;
+    while (!feof($handle)) {
+        $chunk = fread($handle, 65536);
+        if ($chunk === false || $chunk === '') break;
+        $length = strlen($chunk);
+        for ($i = 0; $i < $length; $i++) {
+            $char = $chunk[$i];
+            if ($inString) {
+                if ($escaped) $escaped = false;
+                elseif ($char === '\\') $escaped = true;
+                elseif ($char === '"') $inString = false;
+                continue;
+            }
+            if ($char === '"') {
+                $inString = true;
+            } elseif ($char === '{') {
+                if ($objectDepth === 0) $count++;
+                $objectDepth++;
+            } elseif ($char === '}' && $objectDepth > 0) {
+                $objectDepth--;
+            } elseif ($char === ']' && $objectDepth === 0) {
+                return $count;
+            }
+        }
+    }
+    return $count;
 }
 
 function marketData(array $payload): array

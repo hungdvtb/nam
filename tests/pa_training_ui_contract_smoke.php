@@ -146,6 +146,10 @@ $assertContains($app, 'function jumpSelectedDrawingToTimeframe', 'frontend must 
 $assertContains($index, 'drawingJumpM15Btn', 'floating drawing toolbar must include jump-to-M15 action');
 $assertContains($index, 'data-chart-tool="ellipse"', 'drawing toolbar must include a circle/ellipse tool for circling AI context');
 $assertContains($app, "if (state.activeTab === 'pa-training') return;", 'PA chart must suppress backtest warning/trade overlays');
+$assertContains($app, "if (tab === 'pa-training') {", 'opening Dạy PA must initialize its chart');
+$assertContains($app, "loadPaTrainingChartForSymbol(file.symbol, file.timeframe, { silent: true })", 'Dạy PA must load a default chart when no workspace selection exists');
+$assertNotContains($app, 'Math.min(...m15Times)', 'PA alignment must not spread large candle arrays into Math.min');
+$assertContains($api, 'function countMarketFileBars($handle): int', 'market file metadata must count candles without decoding full data files');
 $assertContains($app, 'zone-rect-tool', 'frontend must show clear rectangle zone drawing tools');
 $assertContains($app, 'Canh buy', 'frontend must rename demand zones to canh buy for users');
 $assertContains($app, 'Canh sell', 'frontend must rename supply zones to canh sell for users');

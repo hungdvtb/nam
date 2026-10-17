@@ -3947,10 +3947,15 @@
                 if (m15File) {
                     const m15Response = await api('market_data', { file: m15File.file });
                     const m15Bars = m15Response.market_data?.bars || [];
-                    const m15Times = m15Bars.map(barTimeValue).filter(Number.isFinite);
-                    if (m15Times.length) {
-                        const from = Math.min(...m15Times);
-                        const to = Math.max(...m15Times);
+                    let from = Infinity;
+                    let to = -Infinity;
+                    for (const bar of m15Bars) {
+                        const time = barTimeValue(bar);
+                        if (!Number.isFinite(time)) continue;
+                        from = Math.min(from, time);
+                        to = Math.max(to, time);
+                    }
+                    if (Number.isFinite(from) && Number.isFinite(to)) {
                         const timeframeSeconds = ({ M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 })[resolvedTimeframe] || 1;
                         chartData = {
                             ...chartData,
@@ -16086,6 +16091,14 @@
         if (tab === 'pa-training') {
             chartPanel?.classList.remove('is-fullscreen');
             setChartButtonLabel(fullscreenButton, paPanel?.classList.contains('is-pa-fullscreen') ? 'Thu gọn' : 'Phóng to');
+            const symbol = state.paTrainingSymbol || paTrainingSymbols()[0];
+            const file = symbol ? findBestMarketFileForSymbol(symbol, state.paTrainingTimeframe || 'H4') : null;
+            const loaded = state.activeMarketData;
+            const alreadyLoaded = file && loaded && sameSymbol(loaded.symbol, file.symbol)
+                && String(loaded.timeframe || '').toUpperCase() === String(file.timeframe || '').toUpperCase();
+            if (file && !alreadyLoaded && !state.paTrainingChartLoading) {
+                loadPaTrainingChartForSymbol(file.symbol, file.timeframe, { silent: true }).catch((error) => showToast(error.message));
+            }
         } else {
             paPanel?.classList.remove('is-pa-fullscreen');
             setChartButtonLabel(fullscreenButton, chartPanel?.classList.contains('is-fullscreen') ? 'Thu gọn' : 'Phóng to');
