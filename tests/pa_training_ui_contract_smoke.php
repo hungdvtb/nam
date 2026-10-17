@@ -130,6 +130,10 @@ $assertContains($app, 'function renderPaTrainingChart()', 'frontend must render 
 $assertContains($app, 'function mountSharedMarketChart', 'frontend must move the shared chart between MT5 and PA training');
 $assertNotContains($app, 'paBacktestStatsToggle', 'PA chart should not expose the old backtest stats toggle in manual teaching mode');
 $assertContains($app, 'function loadPaTrainingChartForSelection', 'frontend must load PA chart data for selected zone');
+$assertContains($app, 'paTrainingChartRequestId: 0', 'PA chart loading must track the latest symbol/timeframe request');
+$assertContains($app, 'if (!isCurrentRequest()) return false;', 'stale PA chart requests must not replace a newer chart');
+$assertContains($app, 'if (opened) {', 'PA chart actions must only report success after data has loaded');
+$assertContains($app, 'aligned: false, referenceBars:', 'PA chart must keep requested timeframe visible when M15 history does not overlap');
 $assertContains($app, 'function openPaTrainingFullChart', 'frontend must allow opening the full chart when needed');
 $assertContains($app, "state.activeTab === 'pa-training'", 'PA fullscreen must switch the whole PA workspace instead of only the chart');
 $assertContains($app, 'is-pa-fullscreen', 'PA fullscreen must use a dedicated whole-workspace class');
