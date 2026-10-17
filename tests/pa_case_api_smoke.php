@@ -24,6 +24,20 @@ try {
     checkCaseApi(count(paTrainingSavedCases($store)['saved_cases'])===1,'adding lesson preserves trash');
     paTrainingSavedCaseMutate($store,'restore',['id'=>$id]);
     checkCaseApi(count(paTrainingMemory($store)['setup_reviews'])===1,'restore persists');
+    $retrievalLessons = [];
+    for ($i = 1; $i <= 14; $i++) {
+        $retrievalLessons[] = ['id'=>'lesson_'.$i,'title'=>'Rule '.$i,'content'=>$i === 1 ? 'Wait for candle confirmation before entry.' : 'General review note '.$i.'.','kind'=>'trade_case','symbol'=>'TEST','timeframe'=>'H4','confidence'=>4,'tags'=>['feedback']];
+    }
+    $retrieved = paTrainingRelevantLessons(['lessons'=>$retrievalLessons], ['symbol'=>'TEST','timeframe'=>'H4'], null, null, 'wait for candle confirmation');
+    checkCaseApi(count($retrieved) > 8, 'chat lesson retrieval must use the token budget instead of a fixed item count');
+    checkCaseApi($retrieved[0]['content'] === 'Wait for candle confirmation before entry.', 'lesson retrieval must rank matches to the current question first');
+    $deduplicated = paTrainingRelevantLessons(['lessons'=>[$retrievalLessons[0], $retrievalLessons[0]]], ['symbol'=>'TEST','timeframe'=>'H4'], null, null, 'candle confirmation');
+    checkCaseApi(count($deduplicated) === 1 && $deduplicated[0]['support_count'] === 2, 'repeated identical lessons must be merged and show their support count');
+    $longLessons = [];
+    for ($i = 1; $i <= 8; $i++) $longLessons[] = ['title'=>'Long '.$i,'content'=>str_repeat('confirmation candle setup ', 35).$i,'symbol'=>'TEST','timeframe'=>'H4'];
+    $budgeted = paTrainingRelevantLessons(['lessons'=>$longLessons], ['symbol'=>'TEST','timeframe'=>'H4'], null, null, 'confirmation', 400);
+    $budgetTokens = array_sum(array_map(static fn(array $lesson): int => paTrainingLessonEstimatedTokens(json_encode($lesson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''), $budgeted));
+    checkCaseApi(count($budgeted) < count($longLessons) && $budgetTokens <= 400, 'lesson retrieval must stop at the configured estimated-token budget');
     $store->writeJson('pa_training/chat_history.json', [
         ['id'=>'old','role'=>'user','content'=>'cũ','createdAt'=>'2026-10-12T01:00:00Z','symbol'=>'TEST','timeframe'=>'H4'],
         ['id'=>'new','role'=>'assistant','content'=>'mới','createdAt'=>'2026-10-12T03:00:00Z','symbol'=>'TEST','timeframe'=>'H4'],

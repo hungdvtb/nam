@@ -1184,20 +1184,100 @@ function paTrainingStoreLessons(JsonStore $store, array $m, array $lessons): arr
     return paTrainingMemory($store);
 }
 
-function paTrainingRelevantLessons(array $memory, array $context, ?array $zone, ?array $trade, int $limit = 8): array
+function paTrainingLessonEstimatedTokens(string $text): int
+{
+    $text = trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
+    if ($text === '') return 0;
+    preg_match_all('/[\p{L}\p{N}]+|[^\s\p{L}\p{N}]/u', $text, $units);
+    $compact = preg_replace('/\s+/u', '', $text) ?? $text;
+    $characters = function_exists('mb_strlen') ? mb_strlen($compact, 'UTF-8') : strlen($compact);
+    return max(count($units[0] ?? []), (int)ceil($characters / 4));
+}
+
+function paTrainingLessonSearchTerms(string $text): array
+{
+    $stopWords = array_fill_keys(explode(' ', 'ai app ban biet cac cai ca chart cho chon chi dang day de den duoc gi giup hay hien khi khong la lenh moi mot muc nay neu noi o phan price action setup tai theo the thi toi trong tu va voi xem'), true);
+    preg_match_all('/[\p{L}\p{N}]{2,}/u', paTrainingLower($text), $matches);
+    return array_values(array_unique(array_filter($matches[0] ?? [], static fn(string $term): bool => !isset($stopWords[$term]))));
+}
+
+function paTrainingRelevantLessons(array $memory, array $context, ?array $zone, ?array $trade, string $query = '', int $tokenBudget = 3200): array
 {
     $lessons = is_array($memory['lessons'] ?? null) ? $memory['lessons'] : [];
     $symbol = paTrainingSymbol((string)($context['symbol'] ?? $trade['symbol'] ?? $zone['symbol'] ?? ''));
     $tf = strtoupper((string)($context['timeframe'] ?? $trade['timeframe'] ?? $zone['timeframe'] ?? ''));
-    foreach ($lessons as &$lesson) {
-        $score = (int)($lesson['confidence'] ?? 1);
-        if ($symbol && paTrainingSymbol((string)($lesson['symbol'] ?? '')) === $symbol) $score += 8;
-        if ($tf && strtoupper((string)($lesson['timeframe'] ?? '')) === $tf) $score += 4;
-        $lesson['_score'] = $score;
+    $zone = is_array($zone) ? $zone : [];
+    $trade = is_array($trade) ? $trade : [];
+    $contextText = implode(' ', array_map('strval', [
+        $query,
+        $context['direction'] ?? '', $context['reason'] ?? '',
+        $zone['type'] ?? '', $zone['status'] ?? '', $zone['originType'] ?? '',
+        $trade['direction'] ?? '', $trade['exitType'] ?? '', $trade['correctionNote'] ?? '', $trade['reason'] ?? '',
+    ]));
+    $queryTerms = paTrainingLessonSearchTerms($contextText);
+
+    // Merge exact repeated notes so repeated feedback is visible as stronger evidence, not duplicate prompt text.
+    $groups = [];
+    foreach ($lessons as $lesson) {
+        if (!is_array($lesson)) continue;
+        $content = trim((string)($lesson['content'] ?? $lesson['summary'] ?? ''));
+        $normalized = paTrainingLower(preg_replace('/[^\p{L}\p{N}]+/u', ' ', $content) ?? $content);
+        if ($normalized === '') continue;
+        $lessonSymbol = paTrainingSymbol((string)($lesson['symbol'] ?? ''));
+        $lessonTf = strtoupper((string)($lesson['timeframe'] ?? ''));
+        $kind = (string)($lesson['kind'] ?? '');
+        $tags = is_array($lesson['tags'] ?? null) ? array_map('strval', $lesson['tags']) : [];
+        sort($tags);
+        $key = hash('sha256', implode("\n", [$lessonSymbol, $lessonTf, $kind, (string)($lesson['title'] ?? ''), implode(',', $tags), $normalized]));
+        if (!isset($groups[$key])) {
+            $groups[$key] = $lesson;
+            $groups[$key]['support_count'] = max(1, (int)($lesson['support_count'] ?? 1));
+        } else {
+            $groups[$key]['support_count'] += max(1, (int)($lesson['support_count'] ?? 1));
+            $groups[$key]['confidence'] = max((int)($groups[$key]['confidence'] ?? 1), (int)($lesson['confidence'] ?? 1));
+            if (strcmp((string)($lesson['createdAt'] ?? ''), (string)($groups[$key]['createdAt'] ?? '')) > 0) {
+                foreach (['id', 'title', 'createdAt'] as $field) if (isset($lesson[$field])) $groups[$key][$field] = $lesson[$field];
+            }
+        }
     }
-    unset($lesson);
-    usort($lessons, static fn(array $a, array $b): int => ((int)($b['_score'] ?? 0)) <=> ((int)($a['_score'] ?? 0)));
-    return array_slice($lessons, 0, $limit);
+
+    $ranked = [];
+    foreach ($groups as $lesson) {
+        $lessonSymbol = paTrainingSymbol((string)($lesson['symbol'] ?? ''));
+        $lessonTf = strtoupper((string)($lesson['timeframe'] ?? ''));
+        $tags = is_array($lesson['tags'] ?? null) ? $lesson['tags'] : [];
+        $searchable = implode(' ', array_filter([
+            (string)($lesson['title'] ?? ''), (string)($lesson['content'] ?? ''),
+            (string)($lesson['summary'] ?? ''), (string)($lesson['appliesWhen'] ?? ''),
+            implode(' ', array_map('strval', $tags)), (string)($lesson['kind'] ?? ''),
+        ]));
+        $searchableLower = paTrainingLower($searchable);
+        $score = max(0, min(5, (int)($lesson['confidence'] ?? 1)));
+        if ($symbol && $lessonSymbol === $symbol) $score += 16;
+        if ($tf && $lessonTf === $tf) $score += 8;
+        $kind = (string)($lesson['kind'] ?? '');
+        if (($trade && $kind === 'trade_case') || ($zone && $kind === 'zone')) $score += 3;
+        foreach ($queryTerms as $term) {
+            if (preg_match('/(?<![\p{L}\p{N}])' . preg_quote($term, '/') . '(?![\p{L}\p{N}])/u', $searchableLower)) $score += 3;
+        }
+        $score += min(6, (int)floor(log(max(1, (int)($lesson['support_count'] ?? 1)), 2) * 2));
+        $lesson['_score'] = $score;
+        $ranked[] = $lesson;
+    }
+    usort($ranked, static fn(array $a, array $b): int => ((int)($b['_score'] ?? 0) <=> (int)($a['_score'] ?? 0)) ?: strcmp((string)($b['createdAt'] ?? ''), (string)($a['createdAt'] ?? '')));
+
+    $budget = max(128, min(6000, $tokenBudget));
+    $selected = [];
+    $usedTokens = 0;
+    foreach ($ranked as $lesson) {
+        $item = array_intersect_key($lesson, array_flip(['title', 'content', 'summary', 'appliesWhen', 'kind', 'symbol', 'timeframe', 'tags', 'confidence', 'support_count', 'createdAt']));
+        $item['_score'] = (int)($lesson['_score'] ?? 0);
+        $tokens = paTrainingLessonEstimatedTokens(json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        if ($tokens > 0 && $usedTokens + $tokens > $budget) continue;
+        $selected[] = $item;
+        $usedTokens += $tokens;
+    }
+    return $selected;
 }
 
 function paTrainingChatScope(array $context): array
@@ -1294,7 +1374,7 @@ function paTrainingAiChat(JsonStore $store, array $payload): array
     $memory = paTrainingMemory($store);
     $wantsChartDrawing = paTrainingIsChartDrawingRequest($message);
     $actions = paTrainingChatActions($message, $context, $history);
-    $lessons = paTrainingRelevantLessons($memory, $context, $zone, $trade, 8);
+    $lessons = paTrainingRelevantLessons($memory, $context, $zone, $trade, $message);
     $ai = paTrainingOpenAICoachReply($message, $zone, $trade, $actions, $memory, $context, $history, $lessons, $chartAttachment, $wantsChartDrawing);
     if ($wantsChartDrawing && empty(array_filter($actions, static fn(array $action): bool => ($action['type'] ?? '') === 'draw_chart_annotation'))) {
         $actions = array_merge($actions, paTrainingNormalizeAiChartActions($ai['chart_actions'] ?? [], $context, $chartAttachment));
@@ -1303,7 +1383,7 @@ function paTrainingAiChat(JsonStore $store, array $payload): array
     $reply = ($ai['ok'] ?? false) === true ? (string)$ai['reply'] : paTrainingProviderErrorReply($provider, $actions);
     if (paTrainingShouldSaveChatLesson($message, $actions)) {
         $memory = paTrainingStoreLessons($store, $memory, [paTrainingDraftLesson($message, $zone, $trade, $context, 'chat_lesson', '', '', 'Bài h?c t? chat')]);
-        $lessons = paTrainingRelevantLessons($memory, $context, $zone, $trade, 8);
+        $lessons = paTrainingRelevantLessons($memory, $context, $zone, $trade, $message);
     }
     $scope = paTrainingChatScope($context);
     $zoneId = is_array($zone) ? (string)($zone['id'] ?? $zone['zoneId'] ?? '') : '';
@@ -1325,7 +1405,7 @@ function paTrainingOpenAICoachReply(string $message, ?array $zone, ?array $trade
         }
         $messages = [[
             'role' => 'system',
-            'content' => "B?n là AI Coach trong app d?y Price Action Forex H4/M15. Tr? l?i ti?ng Vi?t ng?n, th?c t?. Khi có ảnh chart và hình vẽ, hãy phân tích đúng các vùng/đường được đánh dấu; dữ liệu tọa độ trong phần đính kèm mô tả chúng. Phân biệt nhận xét kỹ thuật với khuyến nghị chắc chắn; nêu điều kiện và rủi ro. N?u user ra l?nh thao tác, xác nh?n thao tác app s? ch?y b?ng action n?i b?. Không h?a d?t l?nh th?t.",
+            'content' => "B?n là AI Coach trong app d?y Price Action Forex H4/M15. Tr? l?i ti?ng Vi?t ng?n, th?c t?. Khi có ảnh chart và hình vẽ, hãy phân tích đúng các vùng/đường được đánh dấu; dữ liệu tọa độ trong phần đính kèm mô tả chúng. Phân biệt nhận xét kỹ thuật với khuyến nghị chắc chắn; nêu điều kiện và rủi ro. N?u user ra l?nh thao tác, xác nh?n thao tác app s? ch?y b?ng action n?i b?. Không h?a d?t l?nh th?t. Use relevant_lessons as prior examples: support_count indicates repeated observations; favor rules supported by multiple context-matched examples, do not treat a single lesson as universal, and call out conflicting lessons when relevant.",
         ]];
         $messages[] = ['role' => 'system', 'content' => $wantsChartDrawing
             ? 'This user requested a chart drawing. Return exactly one JSON object with keys reply (Vietnamese string) and chart_actions (array). Each action must be {"type":"draw_chart_annotation","drawing":{...}}. Use only supported drawing types listed in the user data. Every point must use an existing global barIndex from chart_geometry.visible_bars and a real positive price from those candles/chart/context. Never invent bar indexes outside chart_geometry.bar_count. For zones use type rect, two points at the price boundaries, and zoneType supply or demand only when justified. For lines use two points; for hline use price; for vline use barIndex; for text/markers use point; position uses direction, entry, stop, target, startBar, endBar. You may return multiple drawings when requested. Prefer the selected trade/zone values when the user asks to draw that setup. If the chart/context cannot support a precise drawing, return chart_actions:[] and ask one short clarifying question in reply. Do not say you drew anything unless chart_actions contains it. If app_actions_detected already contains draw_chart_annotation, return chart_actions:[] to avoid duplicate drawings.'
