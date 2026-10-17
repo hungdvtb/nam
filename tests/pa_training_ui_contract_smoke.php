@@ -130,6 +130,13 @@ $assertContains($app, 'function renderPaTrainingChart()', 'frontend must render 
 $assertContains($app, 'function mountSharedMarketChart', 'frontend must move the shared chart between MT5 and PA training');
 $assertNotContains($app, 'paBacktestStatsToggle', 'PA chart should not expose the old backtest stats toggle in manual teaching mode');
 $assertContains($app, 'function loadPaTrainingChartForSelection', 'frontend must load PA chart data for selected zone');
+$assertContains($app, 'function restorePaTrainingChartViewport', 'frontend must restore the saved chart viewport after loading data');
+$assertContains($app, 'viewportRightTime', 'PA workspace must remember the candle at the visible chart edge');
+$assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember the chart price scale');
+$assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
+$assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
+$assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
+$assertContains($index, 'assets/app.js?v=20261017-pa-workspace-resume', 'PA workspace restoration must use a fresh frontend cache version');
 $assertContains($app, 'paTrainingChartRequestId: 0', 'PA chart loading must track the latest symbol/timeframe request');
 $assertContains($app, 'if (!isCurrentRequest()) return false;', 'stale PA chart requests must not replace a newer chart');
 $assertContains($app, 'if (opened) {', 'PA chart actions must only report success after data has loaded');

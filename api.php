@@ -975,14 +975,33 @@ function paTrainingWorkspaceState(JsonStore $store, array $payload): array
         $timeframe = strtoupper((string)($item['timeframe'] ?? 'H4'));
         if ($symbol === '' || !preg_match('/^[A-Z0-9]+$/', $symbol) || !preg_match('/^[A-Z0-9]+$/', $timeframe)) continue;
         $replayIndex = $item['replayIndex'] ?? null;
-        $current[$symbol . '_' . $timeframe] = [
+        $chartTimeframe = strtoupper((string)($item['chartTimeframe'] ?? $timeframe));
+        $allowedTimeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1'];
+        if (!in_array($chartTimeframe, $allowedTimeframes, true)) $chartTimeframe = $timeframe;
+        $workspace = [
             'symbol' => $symbol,
             'timeframe' => $timeframe,
             'selectedCaseId' => paTrainingLimitText((string)($item['selectedCaseId'] ?? ''), 160),
             'replayIndex' => is_numeric($replayIndex) ? max(0, (int)$replayIndex) : null,
             'replayEnabled' => ($item['replayEnabled'] ?? true) !== false,
+            'chartTimeframe' => $chartTimeframe,
             'updatedAt' => (string)($item['updatedAt'] ?? gmdate('c')),
         ];
+        foreach (['barsOnScreen' => [12, 100000], 'rightOffset' => [-100000, 100000]] as $field => [$min, $max]) {
+            if (isset($item[$field]) && is_numeric($item[$field]) && is_finite((float)$item[$field])) {
+                $workspace[$field] = max($min, min($max, (int)$item[$field]));
+            }
+        }
+        foreach (['viewportRightTime', 'priceScale', 'priceOffset'] as $field) {
+            $value = $item[$field] ?? null;
+            if ($value === null) {
+                $workspace[$field] = null;
+            } elseif (is_numeric($value) && is_finite((float)$value)) {
+                $number = (float)$value;
+                $workspace[$field] = $field === 'priceScale' ? max(0.2, min(20.0, $number)) : max(-1000000000000.0, min(1000000000000.0, $number));
+            }
+        }
+        $current[$symbol . '_' . $timeframe] = $workspace;
     }
     $store->writeJson('pa_training/workspace_state.json', $current);
     return ['ok' => true, 'workspace' => $current];

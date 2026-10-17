@@ -1212,11 +1212,24 @@
     async function resumePaTrainingWorkspace(remembered = savedPaWorkspace()) {
         const symbol = remembered.symbol || state.paTrainingSymbol;
         const timeframe = remembered.timeframe || state.paTrainingTimeframe || 'H4';
-        if (!symbol || !findBestMarketFileForSymbol(symbol, timeframe)) return;
+        const requestedChartTimeframe = String(remembered.chartTimeframe || timeframe || 'H4').toUpperCase();
+        const chartFile = symbol ? findBestMarketFileForSymbol(symbol, requestedChartTimeframe) : null;
+        if (!chartFile) return;
+        const chartTimeframe = String(chartFile.timeframe || requestedChartTimeframe).toUpperCase();
         state.paTrainingSymbol = symbol;
         state.paTrainingTimeframe = timeframe;
+        state.paTrainingChartTimeframe = chartTimeframe;
         state.paTrainingSelectedCaseId = remembered.selectedCaseId || '';
-        await loadPaTrainingTradeCases({ silent: true, restoreProgress: true, chartTimeframe: remembered.chartTimeframe || 'H4' });
+        await loadPaTrainingTradeCases({ silent: true, restoreProgress: true, chartTimeframe });
+        if (!state.activeMarketData || !sameSymbol(state.activeMarketData.symbol, symbol)
+            || String(state.activeMarketData.timeframe || '').toUpperCase() !== chartTimeframe) {
+            await loadPaTrainingChartForSymbol(symbol, chartTimeframe, { silent: true });
+        }
+        if (state.activeMarketData && sameSymbol(state.activeMarketData.symbol, symbol)
+            && String(state.activeMarketData.timeframe || '').toUpperCase() === chartTimeframe) {
+            restorePaTrainingChartViewport(state.activeMarketData, remembered);
+            persistPaWorkspace({ chartTimeframe, selectedCaseId: state.paTrainingSelectedCaseId });
+        }
     }
 
     function renderAll() {
@@ -2077,7 +2090,13 @@
             const requestedReplayIndex = hasReplayIndex ? patch.replayIndex : (previous.replayIndex ?? (state.chartView.replay.enabled ? state.chartView.replay.index : null));
             const keepValidReplay = requestedReplayIndex === null && previous.replayIndex !== null && previous.replayIndex !== undefined && Number.isFinite(Number(previous.replayIndex));
             const chartData = state.activeMarketData;
-            const chartMatches = chartData && sameSymbol(chartData.symbol, symbol);
+            const expectedChartTimeframe = String(patch.chartTimeframe || state.paTrainingChartTimeframe || chartData?.timeframe || '').toUpperCase();
+            const chartMatches = chartData && sameSymbol(chartData.symbol, symbol)
+                && String(chartData.timeframe || '').toUpperCase() === expectedChartTimeframe;
+            const chartBars = chartMatches ? (chartData.bars || []) : [];
+            const viewportIndex = chartBars.length
+                ? clamp(chartBars.length - 1 - Math.round(Number(state.chartView.rightOffset) || 0), 0, chartBars.length - 1)
+                : -1;
             const replayBar = chartMatches && state.chartView.replay.enabled
                 ? chartData.bars?.[clamp(Math.round(Number(state.chartView.replay.index) || 0), 0, Math.max(0, (chartData.bars?.length || 1) - 1))]
                 : null;
@@ -2089,6 +2108,11 @@
                 replayIndex: keepValidReplay ? previous.replayIndex : requestedReplayIndex,
                 replayEnabled: keepValidReplay ? previous.replayEnabled !== false : (hasReplayEnabled ? patch.replayEnabled : (previous.replayEnabled ?? state.chartView.replay.enabled)),
                 chartTimeframe: patch.chartTimeframe || (chartMatches ? chartData.timeframe : previous.chartTimeframe) || timeframe,
+                barsOnScreen: chartMatches ? Math.round(Number(state.chartView.barsOnScreen) || 180) : (previous.barsOnScreen ?? null),
+                rightOffset: chartMatches ? Math.round(Number(state.chartView.rightOffset) || 0) : (previous.rightOffset ?? 0),
+                viewportRightTime: viewportIndex >= 0 ? barTimeValue(chartBars[viewportIndex]) : (previous.viewportRightTime ?? null),
+                priceScale: chartMatches ? Number(state.chartView.priceScale) || 1 : (previous.priceScale ?? 1),
+                priceOffset: chartMatches ? Number(state.chartView.priceOffset) || 0 : (previous.priceOffset ?? 0),
                 replayTime: state.chartView.replay.enabled && state.chartView.replay.time !== null && Number.isFinite(Number(state.chartView.replay.time))
                     ? Number(state.chartView.replay.time)
                     : (replayBar ? barTimeValue(replayBar) : (previous.replayTime ?? null)),
@@ -2111,8 +2135,42 @@
         if (!last) return null;
         state.paTrainingSymbol = String(last.symbol || state.paTrainingSymbol || '');
         state.paTrainingTimeframe = String(last.timeframe || state.paTrainingTimeframe || 'H4').toUpperCase();
+        state.paTrainingChartTimeframe = String(last.chartTimeframe || state.paTrainingTimeframe || 'H4').toUpperCase();
         state.paTrainingSelectedCaseId = String(last.selectedCaseId || '');
         return last;
+    }
+
+    function restorePaTrainingChartViewport(data = state.activeMarketData, savedOverride = null) {
+        const bars = data?.bars || [];
+        if (!bars.length) return false;
+        const saved = savedOverride || savedPaWorkspace(data.symbol || state.paTrainingSymbol, state.paTrainingTimeframe);
+        const savedTimeframe = String(saved.chartTimeframe || '').toUpperCase();
+        if (savedTimeframe && savedTimeframe !== String(data.timeframe || '').toUpperCase()) return false;
+        const hasViewport = (saved.barsOnScreen !== null && saved.barsOnScreen !== undefined && Number.isFinite(Number(saved.barsOnScreen)))
+            || (saved.viewportRightTime !== null && saved.viewportRightTime !== undefined && Number.isFinite(Number(saved.viewportRightTime)))
+            || (saved.rightOffset !== null && saved.rightOffset !== undefined && Number.isFinite(Number(saved.rightOffset)))
+            || (saved.priceScale !== null && saved.priceScale !== undefined && Number.isFinite(Number(saved.priceScale)))
+            || (saved.priceOffset !== null && saved.priceOffset !== undefined && Number.isFinite(Number(saved.priceOffset)));
+        if (!hasViewport) return false;
+
+        const span = clamp(Math.round(Number(saved.barsOnScreen) || state.chartView.barsOnScreen || 180), Math.min(12, bars.length), bars.length);
+        const hasRightTime = saved.viewportRightTime !== null && saved.viewportRightTime !== undefined && Number.isFinite(Number(saved.viewportRightTime));
+        const savedRightTime = hasRightTime ? Number(saved.viewportRightTime) : NaN;
+        const savedRightOffset = Math.round(Number(saved.rightOffset) || 0);
+        const restoreByTime = Number.isFinite(savedRightTime) && savedRightOffset >= 0;
+        const rightIndex = restoreByTime
+            ? chartIndexAtOrBeforeTime(bars, savedRightTime, bars.length - 1)
+            : clamp(bars.length - 1 - savedRightOffset, 0, bars.length - 1);
+        const limits = chartRightOffsetLimits(bars.length, span);
+        const rightOffset = restoreByTime
+            ? bars.length - 1 - rightIndex
+            : savedRightOffset;
+        state.chartView.barsOnScreen = span;
+        state.chartView.rightOffset = clamp(rightOffset, limits.min, limits.max);
+        state.chartView.priceScale = clamp(Number(saved.priceScale) || 1, 0.2, 20);
+        state.chartView.priceOffset = Number.isFinite(Number(saved.priceOffset)) ? Number(saved.priceOffset) : 0;
+        drawMarketChart(data);
+        return true;
     }
 
     function restorePaTrainingReplayProgress(data = state.activeMarketData, savedOverride = null) {
@@ -2414,7 +2472,14 @@
         updateChartTimeframeButtons();
         renderChartControlState();
         if (!state.activeMarketData && state.marketFiles.length) {
-            loadMarketData(state.marketFiles[0].file).catch((e) => showToast(e.message));
+            const savedFile = state.paTrainingSymbol
+                ? findBestMarketFileForSymbol(state.paTrainingSymbol, state.paTrainingChartTimeframe || state.paTrainingTimeframe)
+                : null;
+            loadMarketData(savedFile?.file || state.marketFiles[0].file).then(() => {
+                if (savedFile && state.activeTab === 'pa-training') {
+                    restorePaTrainingChartViewport(state.activeMarketData, savedPaWorkspace(state.paTrainingSymbol, state.paTrainingTimeframe));
+                }
+            }).catch((e) => showToast(e.message));
             return;
         }
         if (state.activeMarketData) {
@@ -3941,6 +4006,7 @@
         }
         const resolvedSymbol = file.symbol || normalizedSymbol;
         const resolvedTimeframe = String(file.timeframe || requestedTimeframe).toUpperCase();
+        const rememberedViewport = savedPaWorkspace(resolvedSymbol, state.paTrainingTimeframe);
         state.paTrainingChartTimeframe = resolvedTimeframe;
         state.paTrainingChartLoading = true;
         state.paTrainingChartError = '';
@@ -3992,6 +4058,7 @@
             state.paTrainingSymbol = resolvedSymbol;
             state.paTrainingChartData = state.activeMarketData;
             state.paTrainingChartError = '';
+            restorePaTrainingChartViewport(state.activeMarketData, rememberedViewport);
             const teachingCase = paTrainingSelectedTeachingCase();
             const zone = paTrainingSelectedZone();
             const anchor = options.anchorTime || teachingCase?.anchorTime || teachingCase?.entryTime || zone?.firstTouchTime || zone?.originCandleTime || zone?.createdAt;
@@ -4013,6 +4080,7 @@
             } else if (anchor) {
                 focusChartTime(timeToSeconds(anchor));
             }
+            persistPaWorkspace({ chartTimeframe: resolvedTimeframe, selectedCaseId: state.paTrainingSelectedCaseId });
             return true;
         } catch (error) {
             if (!isCurrentRequest()) return false;
@@ -4804,6 +4872,7 @@
                     replayEnabled: state.chartView.replay.enabled,
                 });
             }
+            persistPaWorkspace({ chartTimeframe: state.activeMarketData?.timeframe || targetTimeframe });
         }
         syncPaWorkspaceUi();
     }
@@ -12019,6 +12088,7 @@
         state.chartView.barsOnScreen = newBars;
         state.chartView.rightOffset = clamp(Math.round(maxBars - newFirst - newBars), offsetLimits.min, offsetLimits.max);
         drawMarketChart(state.activeMarketData);
+        if (state.activeTab === 'pa-training') persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
     }
 
     function findPaTrainingLevelAtPoint(point, layout) {
@@ -12234,6 +12304,7 @@
                 applyZoomBox(state.chartView.selectionBox, layout);
                 state.chartView.selectionBox = null;
                 returnToCursorAfterDrawing();
+                if (state.activeTab === 'pa-training') persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
             } else if (drag.button === 2 && moved < 8) {
                 const id = selectNearestDrawing(point, layout, 22);
                 state.chartView.selectedDrawingIds = id ? [id] : [];
@@ -12292,6 +12363,9 @@
         state.chartView.drag = null;
         const canvas = $('#marketChart');
         if (canvas) canvas.style.cursor = state.chartView.activeTool === 'cursor' ? 'grab' : 'crosshair';
+        if ((drag?.mode === 'pan' || drag?.mode === 'scale') && state.activeTab === 'pa-training' && state.activeMarketData) {
+            persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
+        }
     }
 
     function startSelectionDrag(point, domainPoint, button = 0) {
@@ -14747,6 +14821,7 @@
         state.chartView.priceScale = 1;
         state.chartView.priceOffset = 0;
         drawMarketChart(state.activeMarketData);
+        if (state.activeTab === 'pa-training') persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
         return true;
     }
 
@@ -15247,6 +15322,7 @@
         state.chartView.priceScale = 1;
         state.chartView.priceOffset = 0;
         drawMarketChart(state.activeMarketData);
+        if (state.activeTab === 'pa-training') persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
     }
 
     function fitChartHorizontally() {
@@ -15257,6 +15333,7 @@
         state.chartView.draftDrawing = null;
         hideChartQuickMenu();
         drawMarketChart(state.activeMarketData);
+        if (state.activeTab === 'pa-training') persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
     }
 
     function fitChartVertically() {
@@ -15267,6 +15344,7 @@
         state.chartView.draftDrawing = null;
         hideChartQuickMenu();
         drawMarketChart(state.activeMarketData);
+        if (state.activeTab === 'pa-training') persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
     }
 
     function jumpChartToBoundary(where) {
@@ -15283,6 +15361,7 @@
         state.chartView.draftDrawing = null;
         hideChartQuickMenu();
         drawMarketChart(state.activeMarketData);
+        if (state.activeTab === 'pa-training') persistPaWorkspace({ chartTimeframe: state.activeMarketData.timeframe });
     }
 
     function copyTradeInfo(trade) {
@@ -16118,12 +16197,15 @@
             chartPanel?.classList.remove('is-fullscreen');
             setChartButtonLabel(fullscreenButton, paPanel?.classList.contains('is-pa-fullscreen') ? 'Thu gọn' : 'Phóng to');
             const symbol = state.paTrainingSymbol || paTrainingSymbols()[0];
-            const file = symbol ? findBestMarketFileForSymbol(symbol, state.paTrainingTimeframe || 'H4') : null;
+            const timeframe = state.paTrainingChartTimeframe || state.paTrainingTimeframe || 'H4';
+            const file = symbol ? findBestMarketFileForSymbol(symbol, timeframe) : null;
             const loaded = state.activeMarketData;
             const alreadyLoaded = file && loaded && sameSymbol(loaded.symbol, file.symbol)
                 && String(loaded.timeframe || '').toUpperCase() === String(file.timeframe || '').toUpperCase();
             if (file && !alreadyLoaded && !state.paTrainingChartLoading) {
                 loadPaTrainingChartForSymbol(file.symbol, file.timeframe, { silent: true }).catch((error) => showToast(error.message));
+            } else if (alreadyLoaded) {
+                restorePaTrainingChartViewport(loaded, savedPaWorkspace(symbol, state.paTrainingTimeframe));
             }
         } else {
             paPanel?.classList.remove('is-pa-fullscreen');

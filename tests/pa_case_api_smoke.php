@@ -30,9 +30,16 @@ try {
     ]);
     $history = paTrainingChatHistoryAction($store, ['context'=>['symbol'=>'TEST','timeframe'=>'H4']])['messages'];
     checkCaseApi($history[0]['id']==='old' && $history[1]['id']==='new', 'chat history sorted oldest to newest for latest scroll');
-    paTrainingWorkspaceState($store, ['state'=>['TEST_H4'=>['symbol'=>'TEST','timeframe'=>'H4','selectedCaseId'=>'case_x','replayIndex'=>321]]]);
+    paTrainingWorkspaceState($store, ['state'=>['TEST_H4'=>[
+        'symbol'=>'TEST','timeframe'=>'H4','selectedCaseId'=>'case_x','replayIndex'=>321,
+        'chartTimeframe'=>'D1','barsOnScreen'=>240,'rightOffset'=>18,'viewportRightTime'=>1700000000,
+        'priceScale'=>1.8,'priceOffset'=>0.0007,
+    ]]]);
     $workspace = paTrainingWorkspaceState($store, [] )['workspace'];
     checkCaseApi($workspace['TEST_H4']['replayIndex']===321 && $workspace['TEST_H4']['selectedCaseId']==='case_x', 'workspace position survives reload');
+    checkCaseApi($workspace['TEST_H4']['chartTimeframe']==='D1' && $workspace['TEST_H4']['barsOnScreen']===240, 'chart timeframe and zoom survive reload');
+    checkCaseApi($workspace['TEST_H4']['rightOffset']===18 && (float)$workspace['TEST_H4']['viewportRightTime']===1700000000.0, 'chart horizontal position survives reload');
+    checkCaseApi($workspace['TEST_H4']['priceScale']===1.8 && $workspace['TEST_H4']['priceOffset']===0.0007, 'chart price scale survives reload');
     $manual=paTrainingBuildTeachingCase(['id'=>'manual','symbol'=>'TEST','low'=>98,'high'=>100],[['time'=>1700000000,'close'=>100]],0,[]);
     checkCaseApi($manual===null, 'manual zone cannot become a filled trade without M15 candles');
     $h4Bars = [['time'=>1700000000,'open'=>100,'high'=>101,'low'=>99,'close'=>99.8]];
