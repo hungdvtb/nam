@@ -12426,6 +12426,7 @@
             x: point.x,
             y: point.y,
             rightOffset: state.chartView.rightOffset,
+            panPixelOffset: state.chartView.panPixelOffset,
             priceScale: state.chartView.priceScale,
             priceOffset: state.chartView.priceOffset,
             priceRange: Math.max(0.0000001, Number.isFinite(layout.scaleHi - layout.scaleLo) ? layout.scaleHi - layout.scaleLo : layout.hi - layout.lo),
@@ -12470,12 +12471,13 @@
         const dx = point.x - drag.x;
         const dy = point.y - drag.y;
         if (drag.mode === 'pan') {
-            const deltaBars = Math.trunc(dx / Math.max(1, layout.barStep));
+            const panPixels = (Number(drag.panPixelOffset) || 0) + dx;
+            const deltaBars = Math.trunc(panPixels / Math.max(1, layout.barStep));
             const offsetLimits = chartRightOffsetLimits(layout.allBars.length, state.chartView.barsOnScreen);
             const requestedOffset = drag.rightOffset + deltaBars;
             const nextOffset = clamp(requestedOffset, offsetLimits.min, offsetLimits.max);
             state.chartView.rightOffset = nextOffset;
-            state.chartView.panPixelOffset = nextOffset === requestedOffset ? dx - deltaBars * layout.barStep : 0;
+            state.chartView.panPixelOffset = nextOffset === requestedOffset ? panPixels - deltaBars * layout.barStep : 0;
             state.chartView.priceOffset = drag.priceOffset + (dy / Math.max(1, layout.priceArea.height)) * drag.priceRange;
         } else if (drag.mode === 'scale') {
             state.chartView.priceScale = clamp(drag.priceScale * (1 - dy * 0.012), 0.2, 20);
@@ -12577,7 +12579,6 @@
             drawMarketChart(state.activeMarketData);
         }
         state.chartView.drag = null;
-        if (drag?.mode === 'pan') state.chartView.panPixelOffset = 0;
         const canvas = $('#marketChart');
         if (canvas) canvas.style.cursor = state.chartView.activeTool === 'cursor' ? 'grab' : 'crosshair';
         if (drag?.mode === 'pan' || drag?.mode === 'scale') drawMarketChart(state.activeMarketData);
