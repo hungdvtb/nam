@@ -40,6 +40,21 @@ try {
     checkCaseApi($workspace['TEST_H4']['chartTimeframe']==='D1' && $workspace['TEST_H4']['barsOnScreen']===240, 'chart timeframe and zoom survive reload');
     checkCaseApi($workspace['TEST_H4']['rightOffset']===18 && (float)$workspace['TEST_H4']['viewportRightTime']===1700000000.0, 'chart horizontal position survives reload');
     checkCaseApi($workspace['TEST_H4']['priceScale']===1.8 && $workspace['TEST_H4']['priceOffset']===0.0007, 'chart price scale survives reload');
+    $marketFixture = $temp . '/market_fixture.json';
+    file_put_contents($marketFixture, json_encode([
+        'symbol'=>'TEST','timeframe'=>'M15','source'=>'MT5',
+        'bars'=>[
+            ['time'=>1700000000,'time_iso'=>'2023-11-14T22:13:20+00:00','open'=>1.1,'high'=>1.2,'low'=>1.0,'close'=>1.15,'tick_volume'=>123,'spread'=>2],
+            ['time'=>1700000900,'time_iso'=>'2023-11-14T22:28:20+00:00','open'=>1.15,'high'=>1.25,'low'=>1.05,'close'=>1.2,'tick_volume'=>456,'spread'=>3],
+        ],
+    ], JSON_UNESCAPED_SLASHES));
+    $marketHandle = fopen($marketFixture, 'rb');
+    ob_start();
+    streamNormalizedMarketDataJson($marketHandle, false);
+    fclose($marketHandle);
+    $streamedMarket = json_decode(ob_get_clean(), true);
+    checkCaseApi(($streamedMarket['ok'] ?? false) === true && count($streamedMarket['market_data']['bars'] ?? []) === 2, 'market data streams as a valid normalized JSON response');
+    checkCaseApi($streamedMarket['market_data']['bars'][1]['index'] === 1 && (float)$streamedMarket['market_data']['bars'][1]['volume'] === 456.0, 'streamed chart bars retain normalized candle fields');
     $manual=paTrainingBuildTeachingCase(['id'=>'manual','symbol'=>'TEST','low'=>98,'high'=>100],[['time'=>1700000000,'close'=>100]],0,[]);
     checkCaseApi($manual===null, 'manual zone cannot become a filled trade without M15 candles');
     $h4Bars = [['time'=>1700000000,'open'=>100,'high'=>101,'low'=>99,'close'=>99.8]];

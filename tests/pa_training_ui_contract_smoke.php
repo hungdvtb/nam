@@ -192,6 +192,8 @@ $assertContains($api, '\'caseId\' => $caseId', 'API chat scope must include the 
 $assertContains($api, '($scope[\'caseId\'] ?? \'\') !== \'\' ? $messages', 'API must return full chat history for a selected teaching case');
 $assertContains($api, 'strlen($json) > 500000', 'API must preserve larger PA session snapshots before falling back to preview');
 $assertContains($api, 'function paTrainingOpenAICoachReply', 'PA AI Coach must call the OpenAI provider for real chat replies');
+$assertContains($api, 'streamMarketDataResponse($payload)', 'large MT5 chart responses must stream to avoid PHP memory exhaustion');
+$assertContains($api, 'function streamNormalizedMarketDataJson', 'market chart endpoint must normalize candles incrementally');
 $assertContains($api, 'pa_training_lesson_save', 'API must save PA lessons derived from chat');
 $assertContains($api, 'function savePaTrainingLesson', 'API must persist manually approved PA lessons');
 $assertContains($api, 'function paTrainingRelevantLessons', 'API must retrieve lessons relevant to the current PA context');

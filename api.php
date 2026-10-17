@@ -21,7 +21,11 @@ try {
         throw new InvalidArgumentException('Missing API action.');
     }
     $payload = apiPayload();
-    apiJson(apiHandle($action, $payload, $store, $defaults));
+    if ($action === 'market_data') {
+        streamMarketDataResponse($payload);
+    } else {
+        apiJson(apiHandle($action, $payload, $store, $defaults));
+    }
 } catch (Throwable $e) {
     http_response_code(400);
     apiJson(['ok' => false, 'error' => $e->getMessage()]);
@@ -277,15 +281,135 @@ function countMarketFileBars($handle): int
 
 function marketData(array $payload): array
 {
-    $file = str_replace(['..', '/', '\\'], '', (string)($payload['file'] ?? ''));
-    if ($file === '') {
-        $file = paTrainingSymbol((string)($payload['symbol'] ?? '')) . '_' . strtoupper((string)($payload['timeframe'] ?? 'H4')) . '.json';
-    }
-    $path = __DIR__ . '/data/market_data/' . $file;
+    $path = marketDataFilePath($payload);
+    $file = basename($path);
     if (!is_file($path)) throw new InvalidArgumentException('Không tìm th?y d? li?u chart: ' . $file);
     $data = json_decode(file_get_contents($path) ?: '', true);
     if (!is_array($data)) throw new RuntimeException('File d? li?u chart l?i: ' . $file);
     return ['ok' => true, 'market_data' => normalizeMarketData($data)];
+}
+
+function marketDataFilePath(array $payload): string
+{
+    $file = str_replace(['..', '/', '\\'], '', (string)($payload['file'] ?? ''));
+    if ($file === '') {
+        $file = paTrainingSymbol((string)($payload['symbol'] ?? '')) . '_' . strtoupper((string)($payload['timeframe'] ?? 'H4')) . '.json';
+    }
+    return __DIR__ . '/data/market_data/' . $file;
+}
+
+function streamMarketDataResponse(array $payload): void
+{
+    $path = marketDataFilePath($payload);
+    $file = basename($path);
+    if (!is_file($path)) throw new InvalidArgumentException('Không tìm th?y d? li?u chart: ' . $file);
+    $handle = @fopen($path, 'rb');
+    if ($handle === false) throw new RuntimeException('Không đọc được dữ liệu chart: ' . $file);
+    try {
+        streamNormalizedMarketDataJson($handle);
+    } finally {
+        fclose($handle);
+    }
+}
+
+function streamNormalizedMarketDataJson($handle, bool $flushOutput = true): void
+{
+    $buffer = '';
+    $headerEnd = false;
+    while (!$headerEnd) {
+        if (preg_match('/"bars"\s*:\s*\[/', $buffer, $matches, PREG_OFFSET_CAPTURE)) {
+            $markerOffset = $matches[0][1];
+            $arrayOffset = $markerOffset + strlen($matches[0][0]);
+            $metadata = json_decode(substr($buffer, 0, $markerOffset) . '"bars":[]}', true);
+            if (!is_array($metadata)) throw new RuntimeException('File dữ liệu chart lỗi định dạng header.');
+            unset($metadata['bars']);
+            $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+            if (!is_string($metadataJson) || $metadataJson === '') throw new RuntimeException('Không thể chuẩn hóa header dữ liệu chart.');
+            $buffer = substr($buffer, $arrayOffset);
+            if ($flushOutput) {
+                while (ob_get_level() > 0) @ob_end_flush();
+            }
+            echo '{"ok":true,"market_data":' . substr($metadataJson, 0, -1) . ',"bars":[';
+            $headerEnd = true;
+            continue;
+        }
+        if (strlen($buffer) > 1048576) throw new RuntimeException('Header dữ liệu chart vượt quá giới hạn.');
+        $chunk = fread($handle, 8192);
+        if ($chunk === false || $chunk === '') throw new RuntimeException('File dữ liệu chart thiếu mảng bars.');
+        $buffer .= $chunk;
+    }
+
+    $offset = 0;
+    $depth = 0;
+    $inString = false;
+    $escaped = false;
+    $value = '';
+    $index = 0;
+    $first = true;
+    $arrayClosed = false;
+    while (!$arrayClosed) {
+        if ($offset >= strlen($buffer)) {
+            $buffer = fread($handle, 65536);
+            $offset = 0;
+            if ($buffer === false || $buffer === '') throw new RuntimeException('File dữ liệu chart bị ngắt giữa mảng bars.');
+        }
+        $char = $buffer[$offset++];
+        if ($value === '') {
+            if ($char === ']') {
+                $arrayClosed = true;
+                continue;
+            }
+            if ($char === ',' || ctype_space($char)) continue;
+            if ($char !== '{') throw new RuntimeException('Nến chart không đúng định dạng JSON object.');
+            $value = '{';
+            $depth = 1;
+            $inString = false;
+            $escaped = false;
+            continue;
+        }
+
+        $value .= $char;
+        if ($inString) {
+            if ($escaped) $escaped = false;
+            elseif ($char === '\\') $escaped = true;
+            elseif ($char === '"') $inString = false;
+            continue;
+        }
+        if ($char === '"') {
+            $inString = true;
+        } elseif ($char === '{' || $char === '[') {
+            $depth++;
+        } elseif ($char === '}' || $char === ']') {
+            $depth--;
+            if ($depth === 0) {
+                $bar = json_decode($value, true);
+                if (is_array($bar)) {
+                    $normalized = [
+                        'index' => $index,
+                        'time' => $bar['time_iso'] ?? $bar['time'] ?? '',
+                        'timestamp' => $bar['time'] ?? null,
+                        'open' => (float)($bar['open'] ?? 0),
+                        'high' => (float)($bar['high'] ?? 0),
+                        'low' => (float)($bar['low'] ?? 0),
+                        'close' => (float)($bar['close'] ?? 0),
+                        'volume' => (float)($bar['tick_volume'] ?? $bar['volume'] ?? 0),
+                        'tickVolume' => (float)($bar['tick_volume'] ?? $bar['volume'] ?? 0),
+                        'spread' => $bar['spread'] ?? null,
+                    ];
+                    $encoded = json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+                    if (is_string($encoded)) {
+                        echo ($first ? '' : ',') . $encoded;
+                        $first = false;
+                    }
+                }
+                $index++;
+                $value = '';
+                if ($flushOutput && $index % 256 === 0) flush();
+            }
+        }
+    }
+    echo ']}}';
+    if ($flushOutput) flush();
 }
 
 function normalizeMarketData(array $data): array
