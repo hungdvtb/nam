@@ -148,7 +148,7 @@ $assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember th
 $assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
 $assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
 $assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
-$assertContains($index, 'assets/app.js?v=20261017-chart-pan-smooth', 'chart interaction changes must use a fresh frontend cache version');
+$assertContains($index, 'assets/app.js?v=20261017-chart-pan-smooth-v2', 'chart interaction changes must use a fresh frontend cache version');
 $assertContains($index, 'assets/styles.css?v=20261017-chart-pan-smooth', 'chart interaction changes must use a fresh stylesheet cache version');
 $assertContains($index, 'assets/pa-workspace.css?v=20261017-pa-chat-compact', 'PA chat changes must use a fresh stylesheet cache version');
 $assertContains($app, 'function paTrainingCaseHasRestorableChanges', 'adjusted PA teaching cases must detect changes against the original setup');
