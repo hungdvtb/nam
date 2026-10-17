@@ -629,6 +629,7 @@
         paTrainingChatError: '',
         paActionHelpClickTimer: null,
         paTrainingSessionDrafts: {},
+        paTrainingExpandedCaseId: '',
         paTrainingSessionSaving: false,
         paTrainingChartData: null,
         paTrainingChartTimeframe: 'H4',
@@ -3661,25 +3662,32 @@
             const riskReason = trade.riskReason || `SL ${formatPrice(trade.initialStop, trade.symbol)} · TP ${formatPrice(trade.targetPrice, trade.symbol)}`;
             const exitReason = trade.exitReason || 'Chưa có kết quả thoát lệnh.';
             const canRestoreLevels = isTeaching && paTrainingCaseHasRestorableChanges(trade);
+            const caseKey = paTrainingSessionKey(trade, zone);
+            const detailsExpanded = state.paTrainingExpandedCaseId === caseKey;
             target.innerHTML = `
                 <div class="pa-ai-zone-card is-${escapeAttr(resultClass)} is-case-card">
-                    <span>${isTeaching ? 'CA DẠY ĐANG XEM' : 'CA TRADE ĐANG XEM'}</span>
-                    <strong>${escapeHtml(paTrainingCaseLabel(trade))}</strong>
-                    <small>${trade.corrected ? 'Đã sửa setup' : 'Đã vào'} · RR đến TP: ${escapeHtml(formatFixed(trade.rr ?? 1, 2))}R</small>
-                    <div class="pa-case-levels" aria-label="Các mức giá của lệnh">
-                        <span><b>Entry</b><strong>${escapeHtml(formatPrice(trade.entryPrice, trade.symbol))}</strong></span>
-                        <span><b>SL</b><strong>${escapeHtml(formatPrice(trade.initialStop, trade.symbol))}</strong></span>
-                        <span><b>TP · ${escapeHtml(formatFixed(trade.rr ?? 1, 2))}R</b><strong>${escapeHtml(formatPrice(trade.targetPrice, trade.symbol))}</strong></span>
+                    <div class="pa-ai-case-summary">
+                        <span>${isTeaching ? 'CA DẠY ĐANG XEM' : 'CA TRADE ĐANG XEM'}</span>
+                        <strong title="${escapeAttr(paTrainingCaseLabel(trade))}">${escapeHtml(paTrainingCaseLabel(trade))}</strong>
                     </div>
-                    ${canRestoreLevels ? `<div class="pa-case-level-reset-row"><button class="button secondary pa-case-level-reset" type="button" data-pa-case-level-reset title="Khôi phục Entry, SL, TP và kết quả ban đầu của ca" aria-label="Khôi phục Entry, SL, TP và kết quả ban đầu của ca">↶ Khôi phục gốc</button></div>` : ''}
-                    <small>Kéo đường Entry, SL hoặc TP trên biểu đồ để chỉnh mức giá.</small>
-                    <small>${escapeHtml(resultText)} | ${escapeHtml(zoneText)}</small>
-                    ${hasOutcome ? `<small>Thoát ${escapeHtml(formatPrice(trade.exitPrice, trade.symbol))} · ${escapeHtml(formatChartTime(trade.exitTime || ''))}</small>` : ''}
-                    <div class="pa-ai-case-reasons">
-                        <div><b>Vùng / lý do</b><span>${escapeHtml(zoneText)} · ${escapeHtml(zoneReason)}</span></div>
-                        <div><b>Lý do vào</b><span>${escapeHtml(entryReason)}</span></div>
-                        <div><b>SL / TP</b><span>${escapeHtml(riskReason)}</span></div>
-                        <div><b>Thoát lệnh</b><span>${escapeHtml(exitReason)}</span></div>
+                    <button class="pa-ai-case-toggle" type="button" data-pa-case-details-toggle aria-expanded="${detailsExpanded}" aria-label="${detailsExpanded ? 'Thu gọn chi tiết ca' : 'Mở chi tiết ca'}" title="${detailsExpanded ? 'Thu gọn chi tiết ca' : 'Mở chi tiết ca'}"><span aria-hidden="true"></span></button>
+                    <div class="pa-ai-case-details"${detailsExpanded ? '' : ' hidden'}>
+                        <small>${trade.corrected ? 'Đã sửa setup' : 'Đã vào'} · RR đến TP: ${escapeHtml(formatFixed(trade.rr ?? 1, 2))}R</small>
+                        <div class="pa-case-levels" aria-label="Các mức giá của lệnh">
+                            <span><b>Entry</b><strong>${escapeHtml(formatPrice(trade.entryPrice, trade.symbol))}</strong></span>
+                            <span><b>SL</b><strong>${escapeHtml(formatPrice(trade.initialStop, trade.symbol))}</strong></span>
+                            <span><b>TP · ${escapeHtml(formatFixed(trade.rr ?? 1, 2))}R</b><strong>${escapeHtml(formatPrice(trade.targetPrice, trade.symbol))}</strong></span>
+                        </div>
+                        ${canRestoreLevels ? `<div class="pa-case-level-reset-row"><button class="button secondary pa-case-level-reset" type="button" data-pa-case-level-reset title="Khôi phục Entry, SL, TP và kết quả ban đầu của ca" aria-label="Khôi phục Entry, SL, TP và kết quả ban đầu của ca">↶ Khôi phục gốc</button></div>` : ''}
+                        <small>Kéo đường Entry, SL hoặc TP trên biểu đồ để chỉnh mức giá.</small>
+                        <small>${escapeHtml(resultText)} | ${escapeHtml(zoneText)}</small>
+                        ${hasOutcome ? `<small>Thoát ${escapeHtml(formatPrice(trade.exitPrice, trade.symbol))} · ${escapeHtml(formatChartTime(trade.exitTime || ''))}</small>` : ''}
+                        <div class="pa-ai-case-reasons">
+                            <div><b>Vùng / lý do</b><span>${escapeHtml(zoneText)} · ${escapeHtml(zoneReason)}</span></div>
+                            <div><b>Lý do vào</b><span>${escapeHtml(entryReason)}</span></div>
+                            <div><b>SL / TP</b><span>${escapeHtml(riskReason)}</span></div>
+                            <div><b>Thoát lệnh</b><span>${escapeHtml(exitReason)}</span></div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -16049,6 +16057,13 @@
             });
         });
         $('#paTrainingCoachZoneSummary')?.addEventListener('click', (event) => {
+            const toggle = event.target.closest('[data-pa-case-details-toggle]');
+            if (toggle) {
+                event.preventDefault();
+                state.paTrainingExpandedCaseId = toggle.getAttribute('aria-expanded') === 'true' ? '' : paTrainingSessionKey();
+                renderPaTrainingCoachZoneSummary();
+                return;
+            }
             const button = event.target.closest('[data-pa-case-level-reset]');
             if (!button) return;
             event.preventDefault();

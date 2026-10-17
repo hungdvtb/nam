@@ -125,7 +125,7 @@ body[data-active-tab="pa-training"] .pa-workspace-v2 .pa-ai-side {
     min-width: 0; min-height: 0; max-height: none; height: 100%; border: 1px solid var(--pa-line);
     border-radius: 10px; background: var(--pa-surface); color: var(--pa-ink); box-shadow: 0 3px 10px #24385505;
 }
-.pa-workspace-v2 .pa-ai-side-head { position: relative; display: flex; align-items: center; justify-content: flex-start; gap: 12px; flex: 0 0 auto; min-height: 76px; padding: 16px; border-bottom: 1px solid var(--pa-line); }
+.pa-workspace-v2 .pa-ai-side-head { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; min-height: 42px; padding: 4px 10px; border-bottom: 1px solid var(--pa-line); }
 .pa-workspace-v2 .pa-ai-side-head::after { display: none; }
 .pa-workspace-v2 .pa-ai-side-head h2 { font-size: 20px; font-weight: 750; letter-spacing: -.4px; }
 .pa-workspace-v2 .pa-ai-side-head > div > span { margin-top: 3px; font-size: 12px; color: var(--pa-muted); }
@@ -136,17 +136,17 @@ body[data-active-tab="pa-training"] .pa-workspace-v2 .pa-ai-side {
 .pa-coach-context div { display: grid; gap: 5px; }
 .pa-coach-context strong { font-size: 13px; }
 .pa-coach-context div > span { font-size: 12px; color: var(--pa-muted); }
-.pa-workspace-v2 .pa-ai-zone-summary:not(:empty) { margin: 0 16px 12px; max-height: 145px; overflow-y: auto; flex-shrink: 0; }
+.pa-workspace-v2 .pa-ai-zone-summary:not(:empty) { margin: 6px 10px 8px; max-height: none; overflow: visible; flex-shrink: 0; }
 .pa-workspace-v2 .pa-ai-zone-card { padding: 10px 12px; border-color: var(--pa-line); font-size: 12px; }
 .pa-workspace-v2 .pa-ai-lessons { display: none; }
 body[data-active-tab="pa-training"] .pa-workspace-v2 .pa-ai-chat-log {
-    flex: 1 1 0; display: flex; flex-direction: column; gap: 16px; min-height: 64px;
-    max-height: none; overflow-y: auto; margin: 0; padding: 4px 16px 10px; border: 0;
+    flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 64px;
+    max-height: none; overflow-y: auto; margin: 0; padding: 4px 10px 10px; border: 0;
     border-radius: 0; background: transparent; scrollbar-width: thin; scroll-behavior: smooth;
 }
-.pa-workspace-v2 .pa-ai-message { flex-shrink: 0; position: relative; margin: 0 0 0 48px; padding: 13px 14px; background: #f1f6ff; border: 1px solid #e1eaff; border-radius: 10px; color: var(--pa-ink); }
-.pa-workspace-v2 .pa-ai-message.is-assistant::before { content: '✦'; position: absolute; left: -48px; top: 0; width: 36px; height: 40px; display: grid; place-items: center; border-radius: 9px; background: #edf4ff; color: #2563eb; font-size: 25px; }
-.pa-workspace-v2 .pa-ai-message.is-user { margin-left: 20px; background: #fff; border-color: var(--pa-line); }
+.pa-workspace-v2 .pa-ai-message { flex-shrink: 0; position: relative; margin: 0 0 0 36px; padding: 11px 12px; background: #f1f6ff; border: 1px solid #e1eaff; border-radius: 10px; color: var(--pa-ink); }
+.pa-workspace-v2 .pa-ai-message.is-assistant::before { content: '✦'; position: absolute; left: -36px; top: 0; width: 28px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: #edf4ff; color: #2563eb; font-size: 21px; }
+.pa-workspace-v2 .pa-ai-message.is-user { margin-left: 12px; background: #fff; border-color: var(--pa-line); }
 .pa-workspace-v2 .pa-ai-message p { margin: 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .pa-workspace-v2 .pa-ai-message-meta { margin-bottom: 5px; color: var(--pa-muted); font-size: 10px; }
 .pa-workspace-v2 .pa-ai-message-meta strong { font-size: 10px; color: var(--pa-muted); }
@@ -160,7 +160,7 @@ body[data-active-tab="pa-training"] .pa-workspace-v2 .pa-ai-quick-action.pa-case
 .pa-workspace-v2 .pa-coach-more-actions { position: absolute; z-index: 40; right: 12px; top: calc(100% - 2px); display: flex; gap: 8px; padding: 12px; background: var(--pa-surface); border: 1px solid var(--pa-line); border-radius: 10px; box-shadow: 0 12px 24px #13223e1c; }
 body[data-active-tab="pa-training"] .pa-workspace-v2 .pa-ai-chat-input {
     display: flex; align-items: flex-end; gap: 8px; flex: 0 0 auto; grid-template-columns: none;
-    margin: auto 0 0; padding: 14px 16px; border: 0; border-top: 1px solid var(--pa-line); border-radius: 0 0 10px 10px; background: var(--pa-surface);
+    margin: auto 0 0; padding: 8px 10px; border: 0; border-top: 1px solid var(--pa-line); border-radius: 0 0 10px 10px; background: var(--pa-surface);
 }
 .pa-workspace-v2 .pa-chat-attach { width: 40px; height: 45px; border: 1px solid var(--pa-line); border-radius: 9px; }
 body[data-active-tab="pa-training"] .pa-workspace-v2 .pa-ai-chat-input textarea {
@@ -171,7 +171,7 @@ body[data-active-tab="pa-training"] .pa-workspace-v2 .pa-ai-chat-input textarea 
 .pa-workspace-v2 .pa-ai-chat-input textarea::placeholder { color: #92a0bb; }
 .pa-workspace-v2 #paTrainingChatSendBtn { display: grid; place-items: center; flex: 0 0 45px; width: 45px; height: 46px; min-height: 46px; padding: 10px; margin: 0; border: 0; border-radius: 9px; color: #fff; background: #2463eb; }
 .pa-workspace-v2 #paTrainingChatSendBtn:disabled { opacity: .45; }
-.pa-workspace-v2 .pa-ai-session-strip:not(:empty) { flex: 0 0 auto; margin: 0 16px 12px; max-height: 70px; overflow-y: auto; }
+.pa-workspace-v2 .pa-ai-session-strip:not(:empty) { flex: 0 0 auto; margin: 0 10px 8px; max-height: 58px; overflow-y: auto; }
 
 body.is-dark[data-active-tab="pa-training"] .pa-workspace-v2 { --pa-line: #2e4057; --pa-ink: #e5edfa; --pa-muted: #9bacc6; --pa-accent: #72a6ff; --pa-surface: #162230; --pa-soft: #1d2a3b; }
 body.is-dark .pa-workspace-v2 .pa-coach-context, body.is-dark .pa-workspace-v2 .pa-ai-message.is-assistant { background: #1a2d48; }
@@ -289,7 +289,19 @@ body[data-active-tab="pa-training"] #paTrainingZonesView.is-pa-queue-open {
 .pa-case-direction.is-supply { color: #c23b4c; background: #fff0f2; }
 .pa-case-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .pa-case-row-meta { color: var(--pa-muted); font-size: 10px; white-space: nowrap; }
-.pa-workspace-v2 .pa-ai-zone-summary:not(:empty) { max-height: 270px; }
+.pa-workspace-v2 .pa-ai-zone-summary:not(:empty) { max-height: none; }
+.pa-workspace-v2 .pa-ai-zone-card.is-case-card { position: relative; display: block; padding: 6px 38px 6px 10px; }
+.pa-ai-case-summary { display: grid; min-width: 0; gap: 1px; }
+.pa-ai-case-summary > span { overflow: hidden; color: var(--pa-muted); font-size: 9px; font-weight: 800; line-height: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.pa-workspace-v2 .pa-ai-zone-card .pa-ai-case-summary > strong { display: block; min-width: 0; overflow: hidden; font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.pa-ai-case-toggle { position: absolute; top: 50%; right: 7px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; transform: translateY(-50%); border: 1px solid var(--pa-line); border-radius: 7px; background: var(--pa-surface); color: var(--pa-muted); cursor: pointer; }
+.pa-ai-case-toggle:hover { border-color: #9bb8e5; background: var(--pa-soft); color: var(--pa-accent); }
+.pa-ai-case-toggle span { width: 8px; height: 8px; margin-top: -4px; transform: rotate(45deg); border-right: 1.7px solid currentColor; border-bottom: 1.7px solid currentColor; }
+.pa-ai-case-toggle[aria-expanded="true"] span { margin-top: 4px; transform: rotate(225deg); }
+.pa-ai-case-details { display: grid; gap: 5px; max-height: min(34dvh, 300px); overflow-y: auto; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--pa-line); }
+.pa-ai-case-details[hidden] { display: none; }
+.pa-workspace-v2 .pa-ai-zone-card .pa-ai-case-details > small { color: var(--pa-muted); font-size: 10px; line-height: 1.35; }
+.pa-ai-case-details .pa-ai-case-reasons { margin-top: 3px; padding-top: 6px; }
 .pa-ai-case-reasons { display: grid; gap: 5px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--pa-line); }
 .pa-ai-case-reasons div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px; align-items: start; }
 .pa-ai-case-reasons b { color: var(--pa-muted); font-size: 10px; line-height: 1.35; }

@@ -33,6 +33,11 @@ $assertContains($index, 'paTrainingSymbolSelect" aria-label="Cặp tiền đang 
 $assertContains($index, 'Danh sách ca trade', 'page must show a compact teaching-case queue');
 $assertContains($index, 'paTrainingZonesView', 'page must include the collapsible teaching-case queue');
 $assertContains($index, 'paTrainingAiChatPanel', 'page must include PA chart chat panel');
+$coachAsideStart = strpos($index, '<aside class="pa-ai-side" id="paTrainingAiChatPanel">');
+$coachAsideEnd = $coachAsideStart === false ? false : strpos($index, '</aside>', $coachAsideStart);
+$coachAside = $coachAsideStart === false || $coachAsideEnd === false ? '' : substr($index, $coachAsideStart, $coachAsideEnd - $coachAsideStart);
+$assertNotContains($coachAside, '<h2>AI Coach</h2>', 'PA chat must omit the large AI Coach title header');
+$assertNotContains($coachAside, 'pa-coach-context', 'PA chat must omit the chart context tile');
 $assertContains($index, 'paTrainingChartMount', 'page must include PA mount for shared TradingView-style chart');
 $assertContains($index, 'paWorkspaceSymbolButton', 'PA workspace header symbol must be clickable');
 $assertContains($index, 'data-pa-header-timeframe="H4"', 'PA workspace header must switch directly to H4');
@@ -76,6 +81,9 @@ $assertContains($app, 'function loadPaTrainingTradeCases', 'frontend must load t
 $assertContains($app, 'function startPaTrainingCaseQueue', 'frontend must start the first open teaching case');
 $assertContains($app, 'pa-case-row', 'frontend must render compact numbered teaching-case rows');
 $assertContains($app, 'pa-ai-case-reasons', 'AI Coach must render the selected case reasons');
+$assertContains($app, 'data-pa-case-details-toggle', 'selected PA case details must be expandable');
+$assertContains($app, 'paTrainingExpandedCaseId', 'expanded PA case details must survive rerenders');
+$assertContains($paWorkspaceCss, '.pa-ai-case-details[hidden] { display: none; }', 'PA case details must be collapsed by default');
 $assertNotContains($app, 'const note = trade.corrected', 'chart must not draw the long teaching-case explanation card');
 $assertContains($app, 'function paTrainingSelectedTeachingCase', 'frontend must track the selected teaching case');
 $assertContains($app, 'selectedTeachingCaseId', 'frontend must send selected teaching case id to AI chat context');
@@ -139,8 +147,8 @@ $assertContains($app, 'priceScale: chartMatches', 'PA workspace must remember th
 $assertContains($app, 'restorePaTrainingChartViewport(state.activeMarketData, remembered)', 'workspace resume must restore the chart viewport after loading teaching cases');
 $assertContains($api, "'chartTimeframe' => " . '$chartTimeframe', 'workspace API must preserve the active chart timeframe');
 $assertContains($api, "foreach (['viewportRightTime', 'priceScale', 'priceOffset']", 'workspace API must preserve chart viewport and price scale fields');
-$assertContains($index, 'assets/app.js?v=20261017-pa-ai-chart-drawing', 'AI chart drawing must use a fresh frontend cache version');
-$assertContains($index, 'assets/pa-workspace.css?v=20261017-pa-case-level-reset', 'PA case reset styles must use a fresh cache version');
+$assertContains($index, 'assets/app.js?v=20261017-pa-chat-compact', 'PA chat changes must use a fresh frontend cache version');
+$assertContains($index, 'assets/pa-workspace.css?v=20261017-pa-chat-compact', 'PA chat changes must use a fresh stylesheet cache version');
 $assertContains($app, 'function paTrainingCaseHasRestorableChanges', 'adjusted PA teaching cases must detect changes against the original setup');
 $assertContains($app, 'data-pa-case-level-reset', 'adjusted PA teaching cases must expose a restore-original-levels button');
 $assertContains($app, 'function resetPaTrainingCaseLevels', 'PA teaching cases must restore original levels and result');

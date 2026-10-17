@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trình huấn luyện giao dịch AI</title>
     <link rel="stylesheet" href="assets/styles.css?v=20261015-case-drag-overlay">
-    <link rel="stylesheet" href="assets/pa-workspace.css?v=20261017-pa-case-level-reset">
+    <link rel="stylesheet" href="assets/pa-workspace.css?v=20261017-pa-chat-compact">
 </head>
 <body>
     <div class="app-shell">
@@ -1863,14 +1863,8 @@
 
                         <aside class="pa-ai-side" id="paTrainingAiChatPanel">
                             <div class="pa-ai-side-head">
-                                <span class="pa-coach-avatar" data-pa-icon="sparkles" aria-hidden="true"></span>
-                                <div>
-                                    <h2>AI Coach</h2>
-                                    <span>Trợ lý phân tích giao dịch</span>
-                                </div>
                                 <button class="pa-tool-button" id="paCoachMoreBtn" type="button" aria-label="Thêm hành động AI Coach" title="Thêm hành động AI Coach" aria-expanded="false" aria-controls="paCoachMoreActions" data-pa-icon="more"></button>
                             </div>
-                            <div class="pa-coach-context"><span class="pa-market-dot" aria-hidden="true"></span><div><strong id="paCoachContextSymbol">—</strong><span id="paCoachContextLabel">Chart đang xem</span></div></div>
                             <div class="pa-ai-zone-summary" id="paTrainingCoachZoneSummary"></div>
                             <div class="pa-ai-lessons" id="paTrainingRelevantLessons"></div>
                             <div class="pa-ai-chat-log" id="paTrainingChatLog" aria-live="polite"></div>
@@ -1997,7 +1991,7 @@
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
     <script src="assets/pa-workspace.js?v=20261016-trade-level-markers"></script>
-    <script src="assets/app.js?v=20261017-pa-ai-chart-drawing"></script>
+    <script src="assets/app.js?v=20261017-pa-chat-compact"></script>
 </body>
 </html>
 
