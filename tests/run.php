@@ -20,6 +20,7 @@ require __DIR__ . '/../lib/CalibrationReport.php';
 require __DIR__ . '/../lib/CalibrationAdvisor.php';
 require __DIR__ . '/../lib/CalibratedPresetService.php';
 require __DIR__ . '/../lib/CalibrationQueueBuilder.php';
+require __DIR__ . '/pa_runner_coordinator_smoke.php';
 
 $tests = [
     'market structure and supply/demand detectors' => 'testPriceActionDetectors',
@@ -48,6 +49,7 @@ $tests = [
     'tradebrain mock json/memory' => 'testTradeBrain',
     'manual calibration review/report/advisor/preset/import-export' => 'testManualCalibrationLoop',
     'live supervisor fail closed' => 'testLiveSupervisor',
+    'manual local/vps runner coordination' => 'testPaRunnerCoordinatorSmokeFile',
 ];
 
 $passed = 0;
