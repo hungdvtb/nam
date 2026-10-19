@@ -639,6 +639,11 @@
         paTrainingSessionDrafts: {},
         paTrainingExpandedCaseId: '',
         paTrainingSessionSaving: false,
+        paJournalView: 'trades',
+        paJournalSearch: '',
+        paJournalPeriod: '30',
+        paJournalSelectedId: '',
+        paJournalPage: 0,
         paTrainingChartData: null,
         paTrainingChartTimeframe: 'H4',
         paTrainingChartLoading: false,
@@ -690,6 +695,7 @@
         mt5: ['Dữ liệu & MT5', 'Lấy dữ liệu nến từ MT5 Exness demo để kiểm thử và huấn luyện AI trong ứng dụng.'],
         trainer: ['Dạy AI', 'Rà soát từng mẫu lệnh và lưu phản hồi của bạn.'],
         'pa-training': ['Dạy Price Action', 'Xử từng ca trade: vùng H4, setup vào lệnh, SL/TP và phản hồi AI trên cùng một màn.'],
+        'pa-journal': ['Nhật ký Trade & Bài học AI', 'Theo dõi ca trade đã lưu, bài học trong bộ nhớ và các quy tắc AI có thể tham khảo khi phân tích tiếp.'],
         'tradebrain-memory': ['Bộ nhớ AI', 'Bài học và nhật ký quyết định của TradeBrain.'],
         memory: ['Nhập/xuất bộ nhớ', 'Xuất, nhập và kiểm tra lại bộ nhớ huấn luyện.'],
     };
@@ -4784,6 +4790,275 @@
                 <span>${escapeHtml(formatDateTime(item.createdAt))}${item.note ? ` | ${escapeHtml(item.note)}` : ''}</span>
             </div>
         `).join('');
+    }
+
+    function paJournalSnapshot(review) {
+        const snapshot = review?.snapshot && typeof review.snapshot === 'object' ? review.snapshot : {};
+        const summary = snapshot.summary && typeof snapshot.summary === 'object' ? snapshot.summary : {};
+        return {
+            trade: snapshot.trade || summary.trade || (snapshot.direction ? snapshot : {}),
+            zone: snapshot.zone || summary.zone || null,
+        };
+    }
+
+    function paJournalTimeValue(value) {
+        const parsed = Date.parse(String(value || ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function paJournalDateLabel(value) {
+        return value ? formatDateTime(value) : '—';
+    }
+
+    function paJournalWithinPeriod(value) {
+        if (state.paJournalPeriod === 'all') return true;
+        const timestamp = paJournalTimeValue(value);
+        if (!timestamp) return true;
+        const days = Math.max(1, Number(state.paJournalPeriod) || 30);
+        return timestamp >= Date.now() - days * 86400000;
+    }
+
+    function paJournalSearchMatches(item, values) {
+        const query = String(state.paJournalSearch || '').trim().toLocaleLowerCase('vi');
+        if (!query) return true;
+        return values.join(' ').toLocaleLowerCase('vi').includes(query);
+    }
+
+    function paJournalTradeRows() {
+        const memory = normalizePaTrainingMemory(state.paTrainingMemory);
+        const lessonByReview = new Map(memory.lessons.filter((lesson) => lesson.sourceReviewId).map((lesson) => [lesson.sourceReviewId, lesson]));
+        return memory.setup_reviews.map((review) => {
+            const snapshot = paJournalSnapshot(review);
+            const trade = snapshot.trade || {};
+            const zone = snapshot.zone || {};
+            const lesson = lessonByReview.get(review.id) || null;
+            const symbol = review.symbol || trade.symbol || zone.symbol || '';
+            const contextTf = trade.contextTimeframe || zone.timeframe || '';
+            const tradeTf = trade.timeframe || review.timeframe || '';
+            const date = trade.entryTime || trade.signalTime || review.createdAt || '';
+            const lessonText = lesson?.content || lesson?.summary || lesson?.appliesWhen || review.note || trade.entryReason || trade.exitReason || trade.reason || '';
+            return { id: review.id, review, trade, zone, lesson, symbol, contextTf, tradeTf, date, lessonText };
+        }).filter((item) => paJournalWithinPeriod(item.date))
+            .filter((item) => paJournalSearchMatches(item, [item.symbol, item.contextTf, item.tradeTf, item.review.label, item.review.decision, item.review.note, item.lessonText, item.trade.direction, item.trade.exitType]))
+            .sort((a, b) => paJournalTimeValue(b.date) - paJournalTimeValue(a.date));
+    }
+
+    function paJournalLessonRows() {
+        const memory = normalizePaTrainingMemory(state.paTrainingMemory);
+        return memory.lessons.filter((lesson) => paJournalWithinPeriod(lesson.createdAt))
+            .filter((lesson) => paJournalSearchMatches(lesson, [lesson.title, lesson.content, lesson.summary, lesson.appliesWhen, lesson.symbol, lesson.timeframe, ...(Array.isArray(lesson.tags) ? lesson.tags : [])]))
+            .sort((a, b) => paJournalTimeValue(b.createdAt) - paJournalTimeValue(a.createdAt));
+    }
+
+    function paJournalRuleGroups() {
+        const groups = new Map();
+        paJournalLessonRows().forEach((lesson) => {
+            const content = String(lesson.content || lesson.summary || lesson.appliesWhen || '').trim();
+            const title = String(lesson.title || 'Bài học PA').trim();
+            const key = content.toLocaleLowerCase('vi').replace(/[^\p{L}\p{N}]+/gu, ' ').trim() || `${title.toLocaleLowerCase('vi')} ${lesson.id || ''}`;
+            if (!groups.has(key)) groups.set(key, { id: `rule:${key}`, title, content, lessons: [], sources: new Set(), timeframes: new Set(), createdAt: lesson.createdAt || '' });
+            const group = groups.get(key);
+            group.lessons.push(lesson);
+            if (lesson.symbol) group.sources.add(String(lesson.symbol).toUpperCase());
+            if (lesson.timeframe) group.timeframes.add(String(lesson.timeframe).toUpperCase());
+            if (paJournalTimeValue(lesson.createdAt) > paJournalTimeValue(group.createdAt)) group.createdAt = lesson.createdAt;
+        });
+        return [...groups.values()].filter((rule) => paJournalSearchMatches(rule, [rule.title, rule.content, ...rule.sources, ...rule.timeframes]))
+            .sort((a, b) => paJournalTimeValue(b.createdAt) - paJournalTimeValue(a.createdAt));
+    }
+
+    function paJournalDecisionLabel(review) {
+        const labels = {
+            good_case: 'Đúng cách', bad_case: 'Bỏ ca', weak_case: 'Cần sửa', adjusted_case: 'Đã chỉnh', session_note: 'Đã ghi chú',
+            approved: 'Đúng kế hoạch', edited: 'Đã sửa', rejected: 'Không phù hợp',
+        };
+        return review.label || labels[review.decision] || review.decision || 'Đã lưu';
+    }
+
+    function paJournalDecisionTone(review) {
+        if (['good_case', 'approved'].includes(review.decision)) return 'is-good';
+        if (['bad_case', 'rejected'].includes(review.decision)) return 'is-bad';
+        if (['weak_case', 'edited', 'adjusted_case'].includes(review.decision)) return 'is-review';
+        return '';
+    }
+
+    function paJournalResult(trade) {
+        if (trade.netR !== null && trade.netR !== undefined && trade.netR !== '' && Number.isFinite(Number(trade.netR))) {
+            const value = Number(trade.netR);
+            return { text: `${formatSigned(value, 2)}R`, className: value > 0 ? 'is-win' : value < 0 ? 'is-loss' : 'is-flat' };
+        }
+        return { text: trade.exitType ? displayExitType(trade.exitType) : 'Chưa có kết quả', className: 'is-neutral' };
+    }
+
+    function paJournalSide(trade) {
+        const direction = String(trade.direction || '').toLowerCase();
+        if (!direction) return '—';
+        return displayTradeSide(direction);
+    }
+
+    function paJournalTimeframe(item) {
+        const values = [...new Set([item.contextTf, item.tradeTf].filter(Boolean).map((value) => String(value).toUpperCase()))];
+        return values.length ? values.join(' / ') : '—';
+    }
+
+    function paJournalRelatedLessons(entry) {
+        const memory = normalizePaTrainingMemory(state.paTrainingMemory);
+        const reviewText = [entry.review.note, entry.trade.reason, entry.trade.zoneReason, entry.trade.entryReason, entry.trade.exitReason, entry.trade.direction].join(' ').toLocaleLowerCase('vi');
+        const terms = [...new Set(reviewText.match(/[\p{L}\p{N}]{3,}/gu) || [])];
+        return memory.lessons.map((lesson) => {
+            const content = [lesson.title, lesson.content, lesson.summary, lesson.appliesWhen, ...(Array.isArray(lesson.tags) ? lesson.tags : [])].join(' ').toLocaleLowerCase('vi');
+            const sameSource = lesson.sourceReviewId === entry.review.id;
+            let score = Math.max(0, Math.min(5, Number(lesson.confidence) || 1));
+            if (sameSource) score += 30;
+            if (entry.symbol && String(lesson.symbol || '').toUpperCase() === String(entry.symbol).toUpperCase()) score += 16;
+            if (entry.tradeTf && String(lesson.timeframe || '').toUpperCase() === String(entry.tradeTf).toUpperCase()) score += 8;
+            score += terms.reduce((total, term) => total + (content.includes(term) ? 3 : 0), 0);
+            score += Math.min(6, Math.floor(Math.log2(Math.max(1, Number(lesson.support_count) || 1)) * 2));
+            return { lesson, score };
+        }).sort((a, b) => b.score - a.score || paJournalTimeValue(b.lesson.createdAt) - paJournalTimeValue(a.lesson.createdAt)).slice(0, 3).map((item) => item.lesson);
+    }
+
+    function paJournalPrice(value) {
+        if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) return '—';
+        return Number(value).toLocaleString('vi-VN', { maximumFractionDigits: 6 });
+    }
+
+    function paJournalTradeDetail(entry) {
+        const result = paJournalResult(entry.trade);
+        const lesson = entry.lessonText || 'Ca này chưa có ghi chú bài học. M có thể mở lại ca trong Dạy Price Action để bổ sung nhận xét.';
+        const related = paJournalRelatedLessons(entry);
+        const prices = [
+            ['Entry', entry.trade.entryPrice], ['SL', entry.trade.initialStop], ['TP', entry.trade.targetPrice], ['Thoát', entry.trade.exitPrice],
+        ].filter(([, value]) => value !== null && value !== undefined && value !== '');
+        return `
+            <div class="pa-journal-detail-heading">
+                <div><h2>Chi tiết ca trade</h2><p>${escapeHtml(entry.symbol || '—')} <span>·</span> ${escapeHtml(paJournalSide(entry.trade))} <span>·</span> ${escapeHtml(paJournalTimeframe(entry))} <span>·</span> ${escapeHtml(paJournalDateLabel(entry.date))}</p></div>
+                <span class="pa-journal-result ${result.className}">${escapeHtml(result.text)}</span>
+            </div>
+            <div class="pa-journal-detail-columns">
+                <section class="pa-journal-learning">
+                    <h3><span aria-hidden="true">✳</span> Bài học đã lưu sau ca trade</h3>
+                    <p class="pa-journal-learning-text">${escapeHtml(lesson)}</p>
+                    ${prices.length ? `<dl class="pa-journal-prices">${prices.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(paJournalPrice(value))}</dd></div>`).join('')}</dl>` : ''}
+                    ${entry.lesson?.tags?.length ? `<div class="pa-journal-tags">${entry.lesson.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+                </section>
+                <section class="pa-journal-rules">
+                    <div class="pa-journal-subhead"><h3>Quy tắc AI có thể tham khảo tiếp</h3><span>Chọn theo mức liên quan</span></div>
+                    ${related.length ? `<ol>${related.map((item) => `<li><p>${escapeHtml(item.content || item.summary || item.appliesWhen || item.title || 'Bài học PA')}</p><small>${escapeHtml([item.symbol, item.timeframe].filter(Boolean).join(' · ') || 'Chưa gắn cặp/khung')}</small></li>`).join('')}</ol>` : '<p class="pa-journal-empty-inline">Chưa có bài học phù hợp trong bộ nhớ. Lưu ghi chú khi dạy ca để AI có thêm kinh nghiệm tham khảo.</p>'}
+                    <div class="pa-journal-rule-footnote">AI dùng bài học phù hợp khi chat hoặc phân tích ca; hiện chưa tự đặt lệnh thật.</div>
+                </section>
+            </div>`;
+    }
+
+    function paJournalLessonDetail(lesson, isRule = false) {
+        if (!lesson) return '<div class="pa-journal-detail-empty">Chọn một bài học để xem nội dung.</div>';
+        const lessons = isRule ? lesson.lessons : [lesson];
+        const content = lesson.content || lesson.summary || lesson.appliesWhen || 'Bài học chưa có nội dung.';
+        const sources = [...new Set(lessons.map((item) => item.symbol).filter(Boolean).map((value) => String(value).toUpperCase()))];
+        const timeframes = [...new Set(lessons.map((item) => item.timeframe).filter(Boolean).map((value) => String(value).toUpperCase()))];
+        const date = lesson.createdAt;
+        return `
+            <div class="pa-journal-detail-heading">
+                <div><h2>${isRule ? 'Chi tiết quy tắc' : 'Chi tiết bài học'}</h2><p>${escapeHtml(lesson.title || 'Bài học Price Action')} <span>·</span> ${escapeHtml(paJournalDateLabel(date))}</p></div>
+                <span class="pa-journal-memory-status">Đã lưu trong bộ nhớ</span>
+            </div>
+            <div class="pa-journal-detail-columns">
+                <section class="pa-journal-learning"><h3>Nội dung bài học</h3><p class="pa-journal-learning-text">${escapeHtml(content)}</p></section>
+                <section class="pa-journal-rules"><h3>Phạm vi ghi nhận</h3><p class="pa-journal-source-list">${escapeHtml(sources.join(', ') || 'Chưa gắn cặp cụ thể')} <span>·</span> ${escapeHtml(timeframes.join(', ') || 'Chưa gắn khung')}</p><p class="pa-journal-rule-footnote">AI xếp bài học theo độ liên quan với cặp, khung và nội dung đang phân tích. Mức giá/vùng được ghi trong bài là ví dụ của dữ liệu nguồn.</p><p class="pa-journal-rule-count">${lessons.length} lần ghi nhận <span>·</span> Cập nhật ${escapeHtml(paJournalDateLabel(date))}</p></section>
+            </div>`;
+    }
+
+    function paJournalPageRows(items, pageSize = 50) {
+        const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+        state.paJournalPage = Math.max(0, Math.min(state.paJournalPage || 0, pageCount - 1));
+        return { pageCount, rows: items.slice(state.paJournalPage * pageSize, (state.paJournalPage + 1) * pageSize) };
+    }
+
+    function paJournalPagination(total, pageCount) {
+        if (total <= 50) return '';
+        const page = state.paJournalPage || 0;
+        const first = page * 50 + 1;
+        const last = Math.min(total, first + 49);
+        return `<div class="pa-journal-pagination"><span>${first}–${last} / ${total}</span><div><button class="button secondary" type="button" data-pa-journal-page="prev" ${page <= 0 ? 'disabled' : ''} aria-label="Trang trước">‹</button><button class="button secondary" type="button" data-pa-journal-page="next" ${page >= pageCount - 1 ? 'disabled' : ''} aria-label="Trang sau">›</button></div></div>`;
+    }
+
+    function renderPaJournal() {
+        const tableRegion = $('#paJournalTableRegion');
+        const detailRegion = $('#paJournalDetail');
+        if (!tableRegion || !detailRegion) return;
+        const view = state.paJournalView || 'trades';
+        const allItems = view === 'trades' ? paJournalTradeRows() : view === 'lessons' ? paJournalLessonRows() : paJournalRuleGroups();
+        const paged = paJournalPageRows(allItems);
+        const visibleItems = paged.rows;
+        const count = $('#paJournalCount');
+        if (count) count.textContent = `${allItems.length.toLocaleString('vi-VN')} mục`;
+        $$('[data-pa-journal-view]').forEach((button) => {
+            const active = button.dataset.paJournalView === view;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+            button.tabIndex = active ? 0 : -1;
+        });
+        if (!allItems.some((item) => item.id === state.paJournalSelectedId) || !visibleItems.some((item) => item.id === state.paJournalSelectedId)) {
+            state.paJournalSelectedId = visibleItems[0]?.id || '';
+        }
+        const selected = visibleItems.find((item) => item.id === state.paJournalSelectedId) || null;
+
+        if (!allItems.length) {
+            const empty = view === 'trades' ? 'Chưa có ca trade nào được lưu trong khoảng thời gian này.' : view === 'lessons' ? 'Chưa có bài học AI nào trong khoảng thời gian này.' : 'Chưa có quy tắc nào được lưu trong khoảng thời gian này.';
+            tableRegion.innerHTML = `<div class="pa-journal-empty"><strong>${escapeHtml(empty)}</strong><span>Thử đổi khoảng thời gian hoặc lưu ca/bài học trong mục Dạy Price Action.</span></div>`;
+            detailRegion.innerHTML = '<div class="pa-journal-detail-empty">Chi tiết sẽ hiện ở đây khi có dữ liệu.</div>';
+            return;
+        }
+
+        let tableHead = '';
+        let tableBody = '';
+        if (view === 'trades') {
+            tableHead = '<th scope="col">Thời gian</th><th scope="col">Cặp</th><th scope="col">Khung</th><th scope="col">Lệnh</th><th scope="col">Kết quả</th><th scope="col">Đánh giá</th><th scope="col">Bài học</th>';
+            tableBody = visibleItems.map((item) => {
+                const result = paJournalResult(item.trade);
+                return `<tr data-pa-journal-id="${escapeAttr(item.id)}" tabindex="0" aria-selected="${item.id === state.paJournalSelectedId ? 'true' : 'false'}" class="${item.id === state.paJournalSelectedId ? 'is-selected' : ''}"><td>${escapeHtml(paJournalDateLabel(item.date))}</td><td class="pa-journal-symbol">${escapeHtml(item.symbol || '—')}</td><td>${escapeHtml(paJournalTimeframe(item))}</td><td>${escapeHtml(paJournalSide(item.trade))}</td><td><span class="pa-journal-result ${result.className}">${escapeHtml(result.text)}</span></td><td><span class="pa-journal-decision ${paJournalDecisionTone(item.review)}">${escapeHtml(paJournalDecisionLabel(item.review))}</span></td><td class="pa-journal-lesson-cell">${escapeHtml(item.lessonText || 'Chưa có ghi chú')}</td></tr>`;
+            }).join('');
+        } else if (view === 'lessons') {
+            tableHead = '<th scope="col">Thời gian</th><th scope="col">Bài học</th><th scope="col">Cặp ghi nhận</th><th scope="col">Khung</th><th scope="col">Nguồn</th>';
+            tableBody = visibleItems.map((item) => `<tr data-pa-journal-id="${escapeAttr(item.id)}" tabindex="0" aria-selected="${item.id === state.paJournalSelectedId ? 'true' : 'false'}" class="${item.id === state.paJournalSelectedId ? 'is-selected' : ''}"><td>${escapeHtml(paJournalDateLabel(item.createdAt))}</td><td class="pa-journal-lesson-cell">${escapeHtml(item.content || item.summary || item.appliesWhen || item.title || 'Bài học PA')}</td><td class="pa-journal-symbol">${escapeHtml(item.symbol || 'Chung')}</td><td>${escapeHtml(item.timeframe || '—')}</td><td>${escapeHtml(item.sourceReviewId ? 'Ca trade' : item.kind === 'chat_lesson' ? 'Chat AI' : 'Đã lưu')}</td></tr>`).join('');
+        } else {
+            tableHead = '<th scope="col">Quy tắc</th><th scope="col">Cặp ghi nhận</th><th scope="col">Khung</th><th scope="col">Số lần ghi nhận</th><th scope="col">Trạng thái</th>';
+            tableBody = visibleItems.map((item) => `<tr data-pa-journal-id="${escapeAttr(item.id)}" tabindex="0" aria-selected="${item.id === state.paJournalSelectedId ? 'true' : 'false'}" class="${item.id === state.paJournalSelectedId ? 'is-selected' : ''}"><td class="pa-journal-lesson-cell">${escapeHtml(item.content || item.title)}</td><td class="pa-journal-symbol">${escapeHtml([...item.sources].join(', ') || 'Chung')}</td><td>${escapeHtml([...item.timeframes].join(', ') || '—')}</td><td>${item.lessons.length}</td><td><span class="pa-journal-memory-status">Đã lưu</span></td></tr>`).join('');
+        }
+        tableRegion.innerHTML = `<div class="pa-journal-table-wrap"><table class="pa-journal-table"><thead><tr>${tableHead}</tr></thead><tbody>${tableBody}</tbody></table></div>${paJournalPagination(allItems.length, paged.pageCount)}`;
+        if (!selected) detailRegion.innerHTML = '<div class="pa-journal-detail-empty">Chọn một mục để xem chi tiết.</div>';
+        else if (view === 'trades') detailRegion.innerHTML = paJournalTradeDetail(selected);
+        else detailRegion.innerHTML = paJournalLessonDetail(selected, view === 'rules');
+    }
+
+    async function loadPaJournalMemory(options = {}) {
+        const data = await api('pa_training_memory', {});
+        state.paTrainingMemory = normalizePaTrainingMemory(data.pa_training_memory);
+        renderPaJournal();
+        if (!options.silent) showToast('Đã tải nhật ký Trade & AI');
+    }
+
+    function exportPaJournal() {
+        const view = state.paJournalView || 'trades';
+        const items = view === 'trades' ? paJournalTradeRows() : view === 'lessons' ? paJournalLessonRows() : paJournalRuleGroups();
+        if (!items.length) {
+            showToast('Không có dữ liệu để xuất trong bộ lọc hiện tại.');
+            return;
+        }
+        const rows = view === 'trades'
+            ? [['Thời gian', 'Cặp', 'Khung', 'Lệnh', 'Kết quả', 'Đánh giá', 'Bài học'], ...items.map((item) => [paJournalDateLabel(item.date), item.symbol, paJournalTimeframe(item), paJournalSide(item.trade), paJournalResult(item.trade).text, paJournalDecisionLabel(item.review), item.lessonText])]
+            : view === 'lessons'
+                ? [['Thời gian', 'Bài học', 'Cặp ghi nhận', 'Khung', 'Nguồn'], ...items.map((item) => [paJournalDateLabel(item.createdAt), item.content || item.summary || item.appliesWhen || item.title, item.symbol || 'Chung', item.timeframe || '', item.sourceReviewId ? 'Ca trade' : item.kind || 'Đã lưu'])]
+                : [['Quy tắc', 'Cặp ghi nhận', 'Khung', 'Số lần ghi nhận'], ...items.map((item) => [item.content || item.title, [...item.sources].join(', ') || 'Chung', [...item.timeframes].join(', '), item.lessons.length])];
+        const csv = '\ufeff' + rows.map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `namtrade-${view}-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
     }
 
     async function loadPaTrainingTradeCases(options = {}) {
@@ -16032,6 +16307,44 @@
         $$('.nav-tab').forEach((button) => {
             button.addEventListener('click', () => activateTab(button.dataset.tab));
         });
+        $('#paJournalSearch')?.addEventListener('input', (event) => {
+            state.paJournalSearch = event.target.value || '';
+            state.paJournalPage = 0;
+            renderPaJournal();
+        });
+        $('#paJournalPeriod')?.addEventListener('change', (event) => {
+            state.paJournalPeriod = event.target.value || '30';
+            state.paJournalPage = 0;
+            renderPaJournal();
+        });
+        $('#paJournalRefreshBtn')?.addEventListener('click', () => loadPaJournalMemory().catch((error) => showToast(error.message)));
+        $('#paJournalExportBtn')?.addEventListener('click', exportPaJournal);
+        $('#paJournalTableRegion')?.addEventListener('click', (event) => {
+            const pageButton = event.target.closest('[data-pa-journal-page]');
+            if (pageButton) {
+                state.paJournalPage += pageButton.dataset.paJournalPage === 'next' ? 1 : -1;
+                renderPaJournal();
+                return;
+            }
+            const row = event.target.closest('tr[data-pa-journal-id]');
+            if (!row) return;
+            state.paJournalSelectedId = row.dataset.paJournalId;
+            renderPaJournal();
+        });
+        $('#paJournalTableRegion')?.addEventListener('keydown', (event) => {
+            if (!['Enter', ' '].includes(event.key)) return;
+            const row = event.target.closest('tr[data-pa-journal-id]');
+            if (!row) return;
+            event.preventDefault();
+            state.paJournalSelectedId = row.dataset.paJournalId;
+            renderPaJournal();
+        });
+        $$('.pa-journal-tab').forEach((button) => button.addEventListener('click', () => {
+            state.paJournalView = button.dataset.paJournalView || 'trades';
+            state.paJournalSelectedId = '';
+            state.paJournalPage = 0;
+            renderPaJournal();
+        }));
         $$('[data-strategy-builder-mode]').forEach((button) => {
             button.addEventListener('click', () => {
                 state.strategyBuilderMode = button.dataset.strategyBuilderMode === 'ai' ? 'ai' : 'manual';
@@ -16502,6 +16815,9 @@
             } else if (alreadyLoaded) {
                 restorePaTrainingChartViewport(loaded, savedPaWorkspace(symbol, state.paTrainingTimeframe));
             }
+        } else if (tab === 'pa-journal') {
+            renderPaJournal();
+            loadPaJournalMemory({ silent: true }).catch((error) => showToast(error.message));
         } else {
             paPanel?.classList.remove('is-pa-fullscreen');
             setChartButtonLabel(fullscreenButton, chartPanel?.classList.contains('is-fullscreen') ? 'Thu gọn' : 'Phóng to');

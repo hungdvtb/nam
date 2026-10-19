@@ -7,6 +7,7 @@
     <title>Trình huấn luyện giao dịch AI</title>
     <link rel="stylesheet" href="assets/styles.css?v=20261017-chart-pan-smooth">
     <link rel="stylesheet" href="assets/pa-workspace.css?v=20261017-pa-chat-compact">
+    <link rel="stylesheet" href="assets/pa-journal.css?v=20261019-pa-journal">
 </head>
 <body>
     <div class="app-shell">
@@ -96,6 +97,7 @@
                     <div class="nav-section-body" id="nav-section-learning" hidden>
                         <button class="nav-tab" data-tab="trainer">Dạy AI</button>
                         <button class="nav-tab" data-tab="pa-training">Dạy Price Action</button>
+                        <button class="nav-tab" data-tab="pa-journal">Nhật ký Trade & AI</button>
                         <button class="nav-tab" data-tab="calibration">Hiệu chỉnh mẫu</button>
                         <button class="nav-tab" data-tab="tradebrain-memory">Bộ nhớ AI</button>
                     </div>
@@ -1915,7 +1917,41 @@
                         <div id="paTrainingSetupGuide"></div>
                     </section>
                 </div>
-            </section>            <section class="tab-panel" id="tab-memory">
+            </section>
+
+            <section class="tab-panel" id="tab-pa-journal">
+                <section class="pa-journal-page" aria-label="Nhật ký Trade và bài học AI">
+                    <div class="pa-journal-toolbar">
+                        <label class="pa-journal-search">
+                            <span class="sr-only">Tìm cặp hoặc bài học</span>
+                            <span class="pa-journal-search-icon" aria-hidden="true">⌕</span>
+                            <input id="paJournalSearch" type="search" placeholder="Tìm cặp / bài học" autocomplete="off">
+                        </label>
+                        <label class="pa-journal-period">
+                            <span class="sr-only">Lọc theo thời gian</span>
+                            <select id="paJournalPeriod">
+                                <option value="30" selected>30 ngày gần nhất</option>
+                                <option value="90">90 ngày gần nhất</option>
+                                <option value="all">Toàn bộ thời gian</option>
+                            </select>
+                        </label>
+                        <button class="button secondary pa-journal-refresh" id="paJournalRefreshBtn" type="button" title="Tải lại nhật ký" aria-label="Tải lại nhật ký">↻</button>
+                        <button class="button pa-journal-export" id="paJournalExportBtn" type="button"><span aria-hidden="true">↓</span> Xuất dữ liệu</button>
+                    </div>
+
+                    <nav class="pa-journal-tabs" role="tablist" aria-label="Nội dung nhật ký">
+                        <button class="pa-journal-tab is-active" type="button" role="tab" aria-selected="true" data-pa-journal-view="trades">Nhật ký trade</button>
+                        <button class="pa-journal-tab" type="button" role="tab" aria-selected="false" data-pa-journal-view="lessons">Bài học AI</button>
+                        <button class="pa-journal-tab" type="button" role="tab" aria-selected="false" data-pa-journal-view="rules">Quy tắc áp dụng</button>
+                        <span class="pa-journal-count" id="paJournalCount" aria-live="polite"></span>
+                    </nav>
+
+                    <div class="pa-journal-table-region" id="paJournalTableRegion"></div>
+                    <section class="pa-journal-detail" id="paJournalDetail" aria-live="polite"></section>
+                </section>
+            </section>
+
+            <section class="tab-panel" id="tab-memory">
                 <div class="workspace-grid two">
                     <section class="panel">
                         <div class="panel-header">
@@ -1992,7 +2028,7 @@
     <script src="assets/pa-zones.js?v=20261011-cases"></script>
     <script src="assets/pa-case-manager.js?v=20261011-cases"></script>
     <script src="assets/pa-workspace.js?v=20261017-pa-sync-null-fix"></script>
-    <script src="assets/app.js?v=20261017-pa-chat-history-v2"></script>
+    <script src="assets/app.js?v=20261019-pa-journal"></script>
 </body>
 </html>
 
